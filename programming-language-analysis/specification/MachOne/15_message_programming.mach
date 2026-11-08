@@ -1,0 +1,214 @@
+;# 00. Os 4 Pilares da Programação Orientada à Mensagens
+;; Modelo herdado de Smalltalk, Objective-C e Self: um objeto não "tem métodos", ele recebe mensagens
+;; 1. Responder (método) | 2. Redirecionar (forward) | 3. Interceptar (intercept) | 4. Proxyficar (Proxy)
+
+;# 00. Pilar 1: Responder Mensagens e perform
+;; O primeiro pilar está em toda a spec: "(obj) mensagem" e o despacho múltiplo escolhe o método
+record Calculator end
+
+impl type[Calculator]
+    on twice: n int = n * 2
+    on add: a int, with: b int = a + b
+end
+
+(Calculator) twice: 21     ; 42
+(Calculator) add: 2 with: 3 ; 5
+
+;; perform é o envio dinâmico (o "send" de Ruby e Smalltalk): a mensagem é uma tag, os argumentos vêm após "with"
+(Calculator) perform: #twice with: 21 ; 42
+
+;; mensagens com várias partes usam um vetor de tags
+(Calculator) perform: [#add, #with] with: [2, 3] ; 5
+
+;; perform devolve try[any], pois o seletor só é conhecido na execução
+(Calculator) perform: #triple with: 3  ; Fail! #not_understood
+(Calculator) perform: #twice with: "a" ; Fail! #no_applicable - existe #twice, mas não para str
+
+;; Nos pilares 2, 3 e 4 a mensagem chega como um valor "message":
+;;   msg's #receiver, msg's #name (tag), msg's #parts (vec[tag]), msg's #args (vec[any]), msg's #block
+;;   (msg) proceed | (msg) proceed_with args (troca os argumentos) | (msg) redirect other
+
+;# 00. Pilar 2: Redirecionar Mensagens (forward)
+;; Se nenhum método atende a mensagem, "forward" é chamado e devolve o novo receptor (ou nil)
+record Motor(Init) end
+
+impl Motor
+    on start = "Motor ligado"
+end
+
+record Car(Init)
+    _motor Motor
+end
+
+impl Car
+    on honk = "Beep!"
+
+    on forward: msg -> maybe[any]
+        let motor = self's #motor
+        (motor) responds_to? (msg's #parts) then { return motor }
+        nil ; ninguém atende
+    end
+end
+
+let car = (Car) new: ((Motor) new)
+(car) honk  ; Beep!
+(car) start ; Motor ligado - o Car repassou ao Motor (self em start é o Motor)
+(car) fly   ; Fail! #not_understood
+
+;# 00. Pilar 3: Interceptar Mensagens (intercept)
+;; "intercept" vê TODA mensagem enviada por outros objetos, mesmo as que o objeto sabe responder
+record Account(Init, Prop)
+    readable _balance double
+    readable _locked bool
+end
+
+impl Account
+    on withdraw: amount double
+        self = self | {#balance: self's #balance - amount}
+    end
+
+    on intercept: msg -> try[any]
+        show "[log] $(msg's #name) $(msg's #args)"
+        ((msg's #name) == #withdraw and (self's #locked)) then do
+            return (Fail) raise #locked, "conta bloqueada" ; o método nunca executa
+        end
+        (msg) proceed ; atende normalmente
+    end
+end
+
+let acc = (Account) new: 100.0, false
+(acc) balance          ; [log] balance [] -> 100.0
+((Account) new: 100.0, true) withdraw: 10.0 ; [log] withdraw [10.0] -> Fail! #locked
+
+;; mensagens que o objeto envia a si mesmo (self) NÃO são interceptadas, evitando recursão infinita
+
+;# 00. Pilar 4: Proxyficar Mensagens (Proxy)
+;; Proxy une os pilares 2 e 3: gera o forward para o atributo "proxied" e aceita intercept
+record GuardedAccount(Init, Proxy)
+    proxied _account Account
+    _role tag
+end
+
+impl GuardedAccount
+    on intercept: msg -> try[any]
+        (((msg's #name) == #withdraw) and ((self's #role) != #admin)) then do
+            return (Fail) raise #denied, "apenas admin pode sacar"
+        end
+        (msg) proceed
+    end
+end
+
+let guarded = (GuardedAccount) new: acc, #viewer
+(guarded) balance        ; [log] balance [] -> 100.0 - repassado ao Account
+(guarded) withdraw: 10.0 ; Fail! #denied
+guarded isa Account      ; true - o proxy vale onde o tipo do alvo é esperado
+
+;; "on target" sobrescreve o alvo a cada mensagem (ex.: criar o objeto real só na primeira mensagem)
+;; Ordem de resolução: intercept -> método -> forward (ou Proxy) -> Fail
+
+;# 00. Métodos Mágicos: Operadores (on op)
+;; Todo operador é uma mensagem: a + b equivale a (a) op + b e a (a) perform #+ with b
+record Vec2(Init, Repr, Prop)
+    readable _x double
+    readable _y double
+end
+
+impl Vec2
+    on op +: other Vec2 -> Vec2 ; binário
+        (Vec2) new: (self's #x + other's #x), (self's #y + other's #y)
+    end
+
+    on op *: k double -> Vec2 ; mesmo operador, outro tipo = despacho múltiplo
+        (Vec2) new: (self's #x * k), (self's #y * k)
+    end
+end
+
+let a = (Vec2) new: 1.0, 2.0
+let b = (Vec2) new: 3.0, 4.0
+a + b         ; Vec2{x: 4.0, y: 6.0}
+a * 2.0       ; Vec2{x: 2.0, y: 4.0}
+(a) +: b      ; Vec2{x: 4.0, y: 6.0}
+; a + "x"     ; Erro! nenhum "op +" aplicável
+
+;; o receptor é o operando da esquerda: para "2.0 * a" implemente "on op *" em "impl double"
+
+;; on op ==
+;; por padrão "==" compara endereços (veja "eq" em 11_records, o mesmo seletor), "!=" é sempre o inverso
+record Money(Init, Prop)
+    readable _cents int
+    readable _currency str
+end
+
+impl Money
+    on op ==: other Money -> bool
+        self's #cents == other's #cents and self's #currency == other's #currency
+    end
+end
+
+let m1 = (Money) new: 500, "BRL"
+m1 == (Money) new: 500, "BRL" ; true
+m1 == 500                    ; false - sem "op ==" aplicável vale a identidade, não um erro
+
+;; on op 's
+;; sobrescreve o acesso seguro (valores padrão, atributos calculados), use "slot" para ler o atributo
+;; direto: "self's" dentro de "op 's" chamaria o próprio método. "maybe_slot" devolve nil se não existir
+record Person(Init, Prop)
+    readable _first_name str
+    readable _last_name str
+end
+
+impl Person
+    on op 's: key tag -> maybe[any]
+        when key
+            is #full_name => "$((self) slot #first_name) $((self) slot #last_name)"
+            default       => (self) maybe_slot key
+        end
+    end
+
+    ;; stringify é usado por "show", pela interpolação ("$obj") e pelas coleções, e vence o gerado por Repr
+    on stringify -> str
+        "Person($((self) slot #first_name))"
+    end
+end
+
+let ada = (Person) new: "Ada", "Lovelace"
+ada's #full_name  ; Ada Lovelace - calculado
+ada's #age        ; nil
+show ada          ; Person(Ada)
+
+;# 00. Métodos Mágicos: initialize e new
+;; (T) new args é a fábrica do TIPO: cria o objeto vazio (create), envia initialize e devolve o objeto
+;; initialize prepara o estado e só roda dentro do new, se puder devolver Fail o new passa a ser try[T]
+record Percent(Prop)
+    readable _value int
+end
+
+impl Percent
+    on initialize: v int
+        ((v < 0) or (v > 100)) then { return (Fail) raise #range, "fora de 0..100: $v" }
+        self = self | {#value: v}
+    end
+
+    on initialize: a int, with: b int ; vários initialize = despacho múltiplo
+        self = self | {#value: a * 100 / b}
+    end
+end
+
+(Percent) new: 150      ; Fail! #range
+(Percent) new: 1, with: 4 ; Percent com 25
+
+;; new é método do tipo: sobrescreva com "impl type[T]", o new padrão continua valendo nas outras assinaturas
+record AppConfig(Init, Prop)
+    readable _env str
+end
+
+var @config maybe[AppConfig] = nil
+
+impl type[AppConfig]
+    on new -> AppConfig ; singleton
+        @config = @config ?: ((self) create "prod") ; create = new padrão, self é o tipo
+        @config
+    end
+end
+
+(AppConfig) new == (AppConfig) new ; true - é o mesmo objeto

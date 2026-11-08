@@ -1,0 +1,70 @@
+;; Programa independente: abstracts, hierarquia, maybe/try e mensagens.
+;; As declarações mantêm ':'. Nos envios, ':' é opcional em cada parte.
+
+abstract data Storage
+end
+
+abstract Named
+    on description -> str
+        self's #name
+    end
+end
+
+record MemoryStore & Storage(Init, Repr, Named)
+    readable _name str
+end
+
+impl T & Storage
+    on category -> str
+        "storage"
+    end
+end
+
+impl MemoryStore
+    on nickname -> maybe[str]
+        nil
+    end
+
+    on parse_age: raw str -> try[int]
+        let parsed = raw::int
+        if (parsed) fail?
+            return parsed
+        end
+        if parsed < 0
+            return (Fail) raise #negative, "idade negativa: $parsed"
+        end
+        parsed
+    end
+end
+
+on some: left int, com: right int -> int
+    left + right
+end
+
+let store = (MemoryStore) new "Memória principal"
+show (store) description
+show (store) category
+
+let nickname maybe[str] = (store) nickname
+show nickname ?: "sem apelido"
+
+show ((store) parse_age "29") rescue |failure| { 18 }
+show ((store) parse_age: "abc") rescue |failure| { 18 }
+show ((store) parse_age "-1") rescue |failure| { 18 }
+
+show some: 5 com: 2
+show some 5 com 2
+show some: 5 com 2
+show some 5 com: 2
+
+;; Saída esperada:
+;; Memória principal
+;; storage
+;; sem apelido
+;; 29
+;; 18
+;; 18
+;; 7
+;; 7
+;; 7
+;; 7

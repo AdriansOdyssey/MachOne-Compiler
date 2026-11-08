@@ -1,0 +1,47 @@
+if (!JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_21)) {
+    throw new GradleException('MachOne precisa de um JDK 21 ou superior. Configure JAVA_HOME para um JDK completo.')
+}
+
+allprojects {
+    group = 'org.machone'
+    version = '0.3.0-dev'
+    repositories { mavenCentral() }
+}
+subprojects {
+    apply plugin: 'java'
+    java {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 21
+    }
+}
+project(':compiler') {
+    apply plugin: 'antlr'
+    dependencies {
+        antlr 'org.antlr:antlr4:4.13.2'
+        implementation 'org.antlr:antlr4-runtime:4.13.2'
+        implementation 'org.ow2.asm:asm:9.7.1'
+        implementation project(':runtime')
+    }
+    sourceSets.main.resources { srcDir rootProject.file('stdlib'); include 'portable.mach' }
+    processResources { eachFile { file -> file.path = 'mach/stdlib/' + file.path }; includeEmptyDirs = false }
+    generateGrammarSource { arguments += ['-visitor', '-no-listener'] }
+}
+project(':cli') {
+    apply plugin: 'application'
+    dependencies { implementation project(':compiler'); implementation project(':runtime') }
+    application { mainClass = 'mach.cli.Main'; applicationName = 'mach' }
+}
+project(':tests') {
+    dependencies {
+        testImplementation project(':compiler')
+        testImplementation project(':runtime')
+        testImplementation project(':cli')
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+    test { useJUnitPlatform() }
+}

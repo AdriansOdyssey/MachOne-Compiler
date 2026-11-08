@@ -1,0 +1,45 @@
+; Portable library definitions compiled by the ordinary MachOne pipeline.
+record Pair[A, B](Init, Repr, Prop, Eq)
+    readable _first A
+    readable _second B
+end
+impl Pair
+    on swap -> Pair[B, A]
+        (Pair) new: self's #second, self's #first
+    end
+end
+record Queue[T](Init, Repr)
+    _values vec[T]
+end
+impl Queue
+    on enqueue: value T -> Queue[T]
+        self | {#values: (self's #values) append value}
+    end
+    on peek -> maybe[T] = (self's #values) first
+    on dequeue -> vec[any]
+        let remaining = self | {#values: (self's #values) drop 1}
+        let result vec[any] = [(self's #values) first, remaining]
+        result
+    end
+    on length -> int = (self's #values) length
+    on empty? -> bool = (self's #values) length == 0
+    on to_vec -> vec[T] = self's #values
+end
+record Stack[T](Init, Repr)
+    _values vec[T]
+end
+impl Stack
+    on push: value T -> Stack[T]
+        self | {#values: (self's #values) append value}
+    end
+    on peek -> maybe[T] = (self's #values) last
+    on pop -> vec[any]
+        let values = self's #values
+        let remaining = self | {#values: (values) take ((values) length - 1)}
+        let result vec[any] = [(values) last, remaining]
+        result
+    end
+    on length -> int = (self's #values) length
+    on empty? -> bool = (self's #values) length == 0
+    on to_vec -> vec[T] = self's #values
+end

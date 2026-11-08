@@ -1,0 +1,581 @@
+;; ==================================================================
+;; MachOne Specification File
+;; Filosofia MachOne
+;; ==================================================================
+
+;; (trate cada seção deste arquivo como um programa independente)
+
+;# 01. Tudo é objeto. Tudo se comunica.
+;; números, booleanos, strings, lambdas, tipos e até operadores respondem a mensagens
+(42) type                ; int
+(42) even?               ; true
+("machone") upcase       ; MACHONE
+(true) then "sim" otherwise "não" ; sim - até o "if" é uma mensagem enviada a um booleano
+
+let double_it = |n| { n * 2 }
+(double_it) result 21    ; 42 - lambdas também são objetos
+
+;; operadores são mensagens: "a + b" equivale a "(a) +: b"
+2 + 3                    ; 5
+(2) +: 3                 ; 5
+
+;; tipos também são objetos e recebem mensagens
+record Greeter end
+
+impl type[Greeter]
+    on hello: name str = "Olá, $name!"
+end
+
+(Greeter) hello: "Ana"   ; Olá, Ana!
+
+;; até a concorrência é troca de mensagens
+let inbox, outbox = (IOBox[int]) new: 1
+(inbox) send 42
+(outbox) receive         ; 42
+
+;# 02. Há mais de um caminho para o mesmo destino.
+;; três formas de criar o mesmo vetor
+let vec_a = [1, 2, 3]
+let vec_b = (Vector) new: [1, 2, 3]
+let vec_c = %[1 2 3]
+
+;; três formas de escolher entre dois valores
+let score = 75
+let result_a = if score >= 60 yield "Aprovado" else "Reprovado"
+let result_b = (score >= 60) then "Aprovado" otherwise "Reprovado"
+let result_c = when score
+    is x, if x >= 60 => "Aprovado"
+    default => "Reprovado"
+end
+
+;; três formas de transformar uma coleção
+let squares_a = for x in 1..5 yield x * x
+let squares_b = (1..5) collect |x| { x * x }
+let squares_c = (1..5) collect { &it * &it }
+
+;; operadores simbólicos ou por extenso
+final status_on = true
+let can_enter = score > 18 and status_on
+let can_exit = score > 18 && status_on
+
+;; adicionar e remover: mensagem ou operador
+let names = ["Ana", "Bia"]
+let names = (names) append "Caio"
+let names = names << "Davi"
+let names = (names) delete "Ana"
+let names = names \\ "Bia"
+
+;; ausência de valor: cada caminho com sua intenção
+let settings = #{host: "db.local", port: nil}
+settings's #port ?: 5432      ; 5432 - seguro e com valor padrão
+(settings) maybe_get #port    ; nil
+(settings) get #host          ; db.local - estrito, falha se não existir
+
+;# 03. Mensagens acima de mecanismos.
+;; não existem métodos estáticos, o tipo é apenas mais um receptor de mensagens
+record Shipping end
+
+impl type[Shipping]
+    on cost: weight double, zone: z tag -> double
+        (z == #local) then { return weight * 2.0 }
+        weight * 5.0
+    end
+end
+
+(Shipping) cost: 3.0 zone: #local ; 6.0
+
+;; o nome da mensagem pode ser um valor: perform é envio dinâmico
+(Shipping) perform: [#cost, #zone] with: [3.0, #far] ; 15.0
+(Shipping) perform: #refund with: 10.0             ; Fail! #not_understood
+
+;; o objeto decide o que fazer com a mensagem: responder, redirecionar ou interceptar
+record Logger(Init) end
+
+impl Logger
+    on log: text = show "[log] $text"
+end
+
+record Service(Init)
+    _logger Logger
+end
+
+impl Service
+    on forward: msg -> maybe[any]
+        let logger = self's #logger
+        (logger) responds_to? (msg's #parts) then { return logger }
+        nil
+    end
+end
+
+let service = (Service) new: ((Logger) new)
+(service) log: "Serviço no ar" ; [log] Serviço no ar - Service não sabe "log:", mas repassa a mensagem
+
+;# 04. Paradigmas são ferramentas, não dogmas.
+;; o mesmo problema: somar os números pares de 1 até 10 (30)
+
+;; Funcional: recursão e guards
+on sum_even: n, if n <= 0 = 0
+on sum_even: n, if (n) even? = n + (sum_even: (n - 1))
+on sum_even: n = sum_even: (n - 1)
+
+show sum_even: 10 ; -> 30
+
+;; Imperativo: variáveis mutáveis e laços
+var @total = 0
+for i in 1..10
+    (i) even? then { @total += i }
+end
+show @total ; -> 30
+
+;; Declarativo: comprehensions
+let evens = for i in 1..10 yield i if (i) even?
+show evens ; -> [2, 4, 6, 8, 10]
+
+;; Orientado a objetos: records e mensagens
+record EvenSum(Init, Prop)
+    readable _total int
+end
+
+impl EvenSum
+    on add: n int
+        (n) even? then { self = self | {#total: self's #total + n} }
+    end
+end
+
+let sum_obj = (EvenSum) new: 0
+(1..10) each |i| { (sum_obj) add: i }
+show (sum_obj) total ; -> 30
+
+;; Concorrente: uma task faz o trabalho e o resultado é aguardado
+let job task[int] = spawn do
+    var @sum = 0
+    (1..10) each |i| { (i) even? then { @sum += i } }
+    @sum
+end
+show ? job ; -> 30
+
+;# 05. Código que se revela como prosa.
+on schedule: meeting, at: hour int, with: guest
+    "Reunião '$meeting' às $hour:00 com $guest"
+end
+
+show schedule: "Planejamento" at: 14 with: "Marina" ; -> Reunião 'Planejamento' às 14:00 com Marina
+
+;; leia em voz alta
+let cart = ["Mouse", "Teclado"]
+let wants_mouse = (cart) has_any? "Mouse", "Monitor"
+
+(wants_mouse) then do
+    show "O cliente quer um mouse"
+otherwise do
+    show "Sem mouse no carrinho"
+end
+
+let stock = 0
+unless stock > 0
+    show "Produto esgotado"
+end
+
+(3) times do
+    show "Repetindo..."
+end
+
+(1) upto 3 => |step| do
+    show "Passo $step"
+end
+
+for fruit, price in #{apple: 5.5, banana: 3.2}
+    show "$fruit custa $price:.2"
+end
+
+let odd_days = 1 to 10 by 2 ; de 1 até 10, de 2 em 2
+
+;# 06. O que é complexo por dentro deve ser simples por fora.
+;; validação, conversão de escala e erros ficam dentro do tipo
+record Temperature(Prop)
+    readable _kelvin double
+end
+
+impl Temperature
+    on initialize: celsius double
+        (celsius < -273.15) then do
+            return (Fail) raise #impossible, "abaixo do zero absoluto: $celsius"
+        end
+        self = self | {#kelvin: celsius + 273.15}
+    end
+
+    on celsius -> double
+        (self's #kelvin) - 273.15
+    end
+end
+
+;; por fora, apenas mensagens simples
+let boiling = (Temperature) new: 100.0
+(boiling) celsius ; 100.0
+(boiling) kelvin  ; 373.15
+
+let invalid = (Temperature) new: -300.0 ; Fail! #impossible
+let message = invalid rescue |f| { "temperatura inválida" }
+
+;; concorrência escondida atrás de uma mensagem comum
+on fetch_all: pages
+    let fetch task[str, str] = spawn |page| do
+        "conteúdo de $page"
+    end
+    let started = (pages) collect |page| { (fetch) result page } ; inicia todas sem esperar
+    (started) collect |job| { ? job }                            ; espera cada uma
+end
+
+show fetch_all: ["home", "sobre", "contato"] ; quem chama não vê tasks, apenas o resultado
+
+;# 07. Metaprogramar é fazer do domínio uma linguagem.
+;; estendendo tipos nativos com o vocabulário do domínio
+impl int
+    on minutes = self * 60
+    on hours = self * 3600
+end
+
+let session_timeout = ((2) hours) + ((30) minutes) ; 9000 segundos
+
+;; gerando uma família de mensagens em tempo de compilação
+@for level in 1..3
+    on discount_level_'(level)
+        return '(level * 5)
+    end
+end
+
+show discount_level_1 ; -> 5
+show discount_level_3 ; -> 15
+
+;; o domínio declara a intenção com labels, e o compilador escreve o código
+abstract Auditable
+    @for attr in &attrs
+        @if (attr's #labels) has_value? #auditable
+            on audit_'(attr's #name)
+                let current = self's #'(attr's #name)
+                "[audit] valor registrado: $current"
+            end
+        @end
+    @end
+end
+
+record Contract(Init, Auditable)
+    auditable _value double
+    auditable _client str
+    _internal_note str ; sem label, sem mensagem de auditoria
+end
+
+let contract = (Contract) new: 5000.0, "ACME", "rascunho"
+(contract) audit_value  ; [audit] valor registrado: 5000.0
+(contract) audit_client ; [audit] valor registrado: ACME
+
+;# 08. De tipos nascem subtipos; de ambos, possibilidades.
+;; tipos geram novos tipos
+data Id = union[int, str]
+float & Number ; true
+
+on find_user: id Id = "Usuário $id"
+
+find_user: 10    ; ok
+find_user: "ana" ; ok
+
+;; tipos geram subtipos
+abstract data Shape
+end
+
+record Circle & Shape(Init, Prop)
+    accessible _radius double
+end
+
+record Square & Shape(Init, Prop)
+    accessible _side double
+end
+
+impl Circle
+    on area -> double
+        3.14 * (self's #radius) * (self's #radius)
+    end
+end
+
+impl Square
+    on area -> double
+        (self's #side) * (self's #side)
+    end
+end
+
+impl T & Shape
+    on describe = "Forma com área $((self) area)" ; vale para qualquer subtipo de Shape
+end
+
+let shapes vec[Shape] = [((Circle) new: 1.0), ((Square) new: 2.0)]
+(shapes) each |shape| { show (shape) describe }
+
+;; tipos e subtipos geram possibilidades
+record Box[T](Init)
+    _content T
+end
+
+let box_id Box[Id] = (Box) new: 7
+let box_text Box[str] = (Box) new: "texto"
+
+let maybe_name maybe[str] = nil     ; pode não existir
+let parsed try[int] = "42"::int     ; pode falhar
+
+;# 09. A linguagem deve se adaptar ao problema, não o contrário.
+;; o problema pede dinheiro: ele ganha operadores, igualdade e texto próprios
+record Money(Init, Prop)
+    readable _cents int
+end
+
+impl Money
+    on op +: other Money -> Money
+        (Money) new: (self's #cents + other's #cents)
+    end
+
+    on op *: times int -> Money
+        (Money) new: (self's #cents * times)
+    end
+
+    on op ==: other Money -> bool
+        self's #cents == other's #cents
+    end
+
+    on stringify -> str
+        let reais = (self's #cents) / 100.0
+        "R$ $reais:.2"
+    end
+end
+
+let coffee = (Money) new: 450
+let lunch = (Money) new: 3200
+show coffee + lunch                         ; -> R$ 36.50
+show coffee * 3                             ; -> R$ 13.50
+coffee + coffee == ((Money) new: 900)       ; true
+
+;; o problema pede regras de negócio: guards fazem delas uma tabela legível
+on income_tax: income, if income <= 2000.0 = 0.0
+on income_tax: income, if income <= 5000.0 = income * 0.1
+on income_tax: income = income * 0.2
+
+show income_tax: 1500.0 ; -> 0.0
+show income_tax: 4000.0 ; -> 400.0
+show income_tax: 9000.0 ; -> 1800.0
+
+;# 10. Concorrência é comunicação, não caos.
+;; um pipeline: cada etapa só conhece o canal que lê e o canal que escreve
+let raw_in, raw_out = (IOBox[int]) new: 2
+let square_in, square_out = (IOBox[int]) new: 2
+
+spawn do
+    (1..5) each |n| { (raw_in) send n }
+    (raw_in) close
+end
+
+spawn do
+    (raw_out) each |n| { (square_in) send (n * n) }
+    (square_in) close
+end
+
+(square_out) each |n| { show n } ; -> 1, 4, 9, 16, 25
+
+;; a posse é clara: a inbox se copia, a outbox pertence a um único consumidor
+let log_in, log_out = (IOBox[str]) new
+
+(1..3) each |worker| do
+    let local_in = (log_in) copy
+    spawn do
+        (local_in) send "worker $worker terminou"
+    end
+end
+
+(3) times do
+    show (log_out) receive ; a ordem pode variar
+end
+
+;; let second_out = (log_out) copy - Erro de compilação! uma outbox tem um único consumidor
+
+;; esperar sem caos: o primeiro canal pronto vence e o tempo também é um canal
+let timeout = (Time) after (5) seconds
+let pay_in, payments = (IOBox[str]) new
+
+alternate
+    is (payments) receive receipt =>
+        show "Pagamento confirmado: $receipt"
+    is (timeout) receive time =>
+        show "Operação expirada em $time"
+end
+
+;; atores: estado protegido, acessado somente por mensagens assíncronas
+record Counter(Init)
+    _count int
+end
+
+behavior Counter
+    on bump
+        show "Contador agora em $(actor's #count + 1)"
+    end
+end
+
+let counter = (Counter) new: 0
+! (counter) bump
+;; (counter) bump - Erro! atores só recebem mensagens assíncronas
+
+;# 11. Abstrações devem revelar, não ocultar.
+;; um record sabe se mostrar e sabe dizer do que é feito
+record Point(Init, Repr, Prop)
+    accessible _x int
+    accessible _y int
+end
+
+impl Point
+    on describe = show &attrs
+end
+
+let point = (Point) new: 1, 2
+show point                    ; Point{x: 1, y: 2}
+(point) describe              ; [{#name: "x", #type: int, #labels: [#accessible]}, {#name: "y", ...}]
+point isa Point               ; true
+(point) responds_to? [#describe] ; true
+
+;; falhas revelam o motivo, e não apenas que algo deu errado
+on check_stock: qty
+    (qty < 0) then { return (Fail) raise #negative, "estoque negativo: $qty" }
+    qty
+end
+
+let stock_now = (check_stock: -3) rescue |f|
+    show "falhou por $((f) kind)" ; -> falhou por #negative
+    0
+end
+
+;; intercept revela toda mensagem que passa por um objeto
+record Wallet(Init, Prop)
+    readable _balance double
+end
+
+impl Wallet
+    on pay: amount double
+        self = self | {#balance: self's #balance - amount}
+    end
+
+    on intercept: msg -> try[any]
+        show "[trace] $(msg's #name) $(msg's #args)"
+        (msg) proceed
+    end
+end
+
+let wallet = (Wallet) new: 100.0
+(wallet) pay: 25.0 ; [trace] pay [25.0]
+(wallet) balance   ; [trace] balance [] -> 75.0
+
+;# 12. Consistência importa mais que familiaridade.
+;; em muitas linguagens "42" == 42 converte sozinho, em MachOne cada intenção tem seu operador
+"42" == 42   ; false - tipagem forte
+"42" like 42 ; true  - semelhança, só os valores
+"42"::int    ; 42    - conversão é sempre "::" e sempre devolve try[T]
+
+;; ranges: "to" exclui o limite e ".." inclui, sempre
+1 to 5 ; [1, 2, 3, 4]
+1..5   ; [1, 2, 3, 4, 5]
+
+;; "?:" trata nil, "rescue" trata Fail, "get" é estrito e "'s" é seguro: nunca se misturam
+let config = #{timeout: nil}
+config's #timeout ?: 30
+("abc"::int) rescue |f| { 0 }
+
+;; o custo de cada operação está no nome do operador
+let items = [1, 2, 3]
+let items = items << 4   ; O(1)
+let items = items + [5]  ; O(n)
+
+;; ";" é comentário, e não separador de comandos, como em C ou Java
+;; o separador é "." ou a quebra de linha
+let first = 1. let second = 2. show first + second
+
+;; tudo se envia da mesma forma: (receptor) mensagem
+(5) kilometers          ; método de um tipo nativo
+(Math) sum: 5 with: 3   ; mensagem a um tipo
+(point) describe        ; mensagem a um record
+(inbox) send 42         ; mensagem a um canal
+(5) +: 3                ; até o operador
+
+;# 13. Elegância nasce da liberdade com disciplina.
+;; liberdade: inferência, métodos sem tipos e várias sintaxes para o mesmo fim
+let free_value = 10
+let free_text = "MachOne"
+
+on subtotal: price, quantity: qty = price * qty
+
+;; disciplina: os tipos que importam são declarados e verificados
+sign { double, int -> double }
+on checkout_total: price, quantity: qty
+    price * qty
+end
+
+checkout_total: 20.0 quantity: 3 ; 60.0
+;; checkout_total: "20" quantity: 3 - Erro! "20" não é double
+
+;; liberdade: escolher entre let, final e var
+;; disciplina: cada um deixa claro o que pode mudar
+final max_retries = 3
+let attempt = 1
+var @pending = 10
+;; final max_retries = 4 - Erro! final não permite rebinding
+
+;; disciplina: falhas não podem ser ignoradas por acidente
+;; let qty int = "42"::int - Erro! try[int] onde int é esperado
+let qty int = ("42"::int) rescue |f| { 1 } ; Ok!
+
+;; liberdade e disciplina juntas: pagamentos de formas diferentes, mesmo contrato
+abstract data Payment
+end
+
+record Pix & Payment(Init, Prop)
+    readable _key str
+end
+
+record Card & Payment(Init, Prop)
+    readable _number str
+end
+
+impl Pix
+    on charge: value double -> try[str]
+        (value <= 0.0) then { return (Fail) raise #invalid, "valor inválido: $value" }
+        "Pix de $value para a chave $(self's #key)"
+    end
+end
+
+impl Card
+    on charge: value double -> try[str]
+        (value > 5000.0) then { return (Fail) raise #limit, "acima do limite do cartão" }
+        "Cartão final $(self's #number) debitado em $value"
+    end
+end
+
+let methods vec[Payment] = [((Pix) new: "ana@mail.com"), ((Card) new: "4242")]
+
+(methods) each |method| do
+    let receipt = (method) charge: 120.0
+    (receipt) ok? then do
+        show receipt
+    otherwise do
+        show "Recusado: $receipt"
+    end
+end
+
+@doc
+    # Os 13 Princípios da Filosofia MachOne
+    01. Tudo é objeto. Tudo se comunica.
+    02. Há mais de um caminho para o mesmo destino.
+    03. Mensagens acima de mecanismos.
+    04. Paradigmas são ferramentas, não dogmas.
+    05. Código que se revela como prosa.
+    06. O que é complexo por dentro deve ser simples por fora.
+    07. Metaprogramar é fazer do domínio uma linguagem.
+    08. De tipos nascem subtipos; de ambos, possibilidades.
+    09. A linguagem deve se adaptar ao problema, não o contrário.
+    10. Concorrência é comunicação, não caos.
+    11. Abstrações devem revelar, não ocultar.
+    12. Consistência importa mais que familiaridade.
+    13. Elegância nasce da liberdade com disciplina.
+@end

@@ -1,0 +1,14 @@
+module collections
+
+; Persistent, snapshot-stable collection APIs are part of the language core.
+; This module exposes the default immutable family:
+;   Array[T], Set[T], SortedSet[T], Queue[T], Stack[T], Deque[T], Bag[T],
+;   Dictionary[K, V], SortedMap[K, V], PriorityQueue[T], Pair[A, B], Range.
+; Mutable collections intentionally live in the sibling namespace
+; collections/mutable and keep side effects explicit and isolated.
+
+; Constructors and builders are available through the type object:
+;   (Array[int]) new [1, 2, 3]
+;   (Set[int]) new [1, 2, 2]
+;   (Dictionary[tag, int]) new #{a: 1, b: 2}
+;   (PriorityQueue[int]) new

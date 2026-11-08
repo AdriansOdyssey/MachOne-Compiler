@@ -1,0 +1,540 @@
+/* ======================================================================
+   MachOne — GRAMÁTICA FORMAL COMPLETA (EBNF)
+   Extensão dos arquivos-fonte: .ma
+   Derivada dos 19 arquivos da especificação (01_basic ... 19_philosophy).
+
+   ESTRUTURA
+     0. Notação
+     1. Léxico (tokens, comentários, literais, operadores, layout)
+     2. Sintaxe (programa, declarações, instruções, expressões)
+     3. Tabela de precedência
+     4. Ambiguidades e regras de desambiguação (LEIA)
+     5. Inconsistências encontradas na própria especificação
+     6. Cobertura: construção da spec -> regra da gramática
+   ====================================================================== */
+
+
+/* ======================================================================
+   0. NOTAÇÃO
+   ----------------------------------------------------------------------
+   Regra ::= expressão          definição
+   "texto" ou 'texto'           terminal literal. NÃO há escapes dentro das
+                                aspas: "\\" são DOIS caracteres barra
+                                invertida (o operador de remoção); '"' é o
+                                caractere aspas.
+   [a-z]  [A-Za-z_]             classe de caracteres
+   ~[ ... ]                     qualquer caractere EXCETO os listados
+   ANY                          qualquer caractere
+   A B        sequência         A | B   alternativa (ordem = preferência)
+   A?  A*  A+                   opcional, zero-ou-mais, um-ou-mais
+   ( ... )                      agrupamento
+   !A                           lookahead negativo (não consome)
+   &A                           lookahead positivo (não consome)
+   [pred: ...]                  predicado semântico (ver seção 4)
+   NL  SEP  EOF                 tokens de layout (seção 1.6)
+   /* ... */                    comentário DESTA gramática
+   ====================================================================== */
+
+
+/* ======================================================================
+   1. LÉXICO
+   ====================================================================== */
+
+/* ---------- 1.1 Espaço em branco e comentários (trivia) ---------- */
+
+Blank        ::= " " | "\t" | "\r"
+Newline      ::= "\n"
+
+LineComment  ::= ";" ~[Newline]*
+                 /* cobre ";", ";;" e ";#" (marcador de seção) */
+
+DocBlock     ::= "@doc" ( !"@end" ANY )* "@end"
+                 /* bloco de documentação multilinha; "@end" encerra.
+                    É trivia (ignorado), pode aparecer onde um Item caberia */
+
+/* ---------- 1.2 Identificadores ---------- */
+
+Letter       ::= [A-Za-z]
+Digit        ::= [0-9]
+IdStart      ::= Letter | "_"
+IdChar       ::= IdStart | Digit
+
+Identifier   ::= !Reserved IdStart IdChar* "?"?
+                 /* sufixo "?" permitido: even?, has_all?, ok?, fail? ...
+                    "_" sozinho é o curinga de padrões */
+
+MutName      ::= "@" !DirectiveWord Identifier
+                 /* variável mutável: @total, @mut_var */
+
+DirectiveWord ::= ( "doc" | "if" | "elsif" | "else" | "for" | "end" ) !IdChar
+
+Splice       ::= "'(" Expr ")"
+                 /* interpolação de código em tempo de compilação */
+
+SplicedName  ::= IdentFrag? Splice ( Splice | IdentFrag )*
+                 /* colado, SEM espaços:  mult_'(i)   get_'(attr's #name)
+                    audit_'(attr's #name)   discount_level_'(level) */
+IdentFrag    ::= IdChar+
+
+Reserved     ::= ( "let" | "final" | "var" | "being"
+                 | "if" | "elsif" | "else" | "unless" | "when" | "is" | "default"
+                 | "while" | "until" | "for" | "in" | "yield" | "loop"
+                 | "do" | "end" | "return" | "break" | "next"
+                 | "on" | "sign" | "impl" | "behavior" | "record" | "abstract"
+                 | "data" | "use" | "as" | "self" | "actor"
+                 | "spawn" | "alternate" | "show" | "read"
+                 | "isa" | "to" | "by" | "and" | "or" | "not" | "like"
+                 | "rescue" | "obj" | "true" | "false" | "nil" ) !IdChar
+                 /* DECISÃO I1: "to" e "by" são SEMPRE reservadas (operadores de
+                    intervalo) e nunca partes de mensagem, com ou sem ":".
+                    CONTEXTUAIS (não reservadas): then, otherwise, op, receive,
+                    closed, has, union, lambda, maybe, try, task, type, vec,
+                    inbox, outbox, any ... */
+
+SpecialRef   ::= "self" | "actor" | "&it" | "&attrs" | "&block"
+
+/* ---------- 1.3 Literais ---------- */
+
+IntLit       ::= Digit+ ( "_" Digit+ )*              /* 500_000   9_999_999_999 */
+FloatLit     ::= IntLit "." IntLit                   /* 3.14   1.234567 (dígitos dos dois lados) */
+BoolLit      ::= "true" | "false"
+NilLit       ::= "nil"
+
+TagLit       ::= "#" ( Identifier | OpSym | Splice )
+                 /* #ok  #not_understood  #+  #'(attr's #name) */
+
+StringLit    ::= '"' StrPart* '"'
+StrPart      ::= EscapeSeq | Interp | StrChar
+StrChar      ::= ~['"' "\" "$"] | "$" !( IdStart | "(" )
+                 /* "$" solitário é literal: "R$ 10" */
+EscapeSeq    ::= "\" ANY                             /* \n \t \r \\ \" ... */
+Interp       ::= "$" ( InterpName | "(" Expr ")" ) FormatSpec?
+InterpName   ::= IdStart IdChar*                     /* $nome (sem "?") */
+FormatSpec   ::= ":" "." Digit+                      /* $price:.2   $((x) f):.2 */
+
+RegexLit     ::= "~" '"' ~['"']* '"'                 /* ~"^\d+$"  sem escapes */
+RawStringLit ::= "\" '"' ~['"']* '"'                 /* \"texto\n"  sem escapes */
+CharLit      ::= "`" ( EscapeSeq | ~["`" "\"] ) "`"  /* `A`  exatamente um caractere */
+HeredocLit   ::= "begin{" HeredocTag "}" Newline HeredocBody "end{" HeredocTag "}"
+HeredocTag   ::= IdChar+
+HeredocBody  ::= ( !( Newline Blank* "end{" ) ANY )*   /* texto cru multilinha */
+
+/* ---------- 1.4 Operadores e pontuação ---------- */
+
+/* Operadores que são MENSAGENS (podem ser selecionados com ":" : (a) +: b ) */
+OpSym        ::= "+" | "-" | "*" | "/" | "//" | "%" | "**"
+               | "==" | "!=" | "<" | ">" | "<=" | ">="
+               | "like" | "~" | "and" | "or" | "not" | "&&" | "||"
+               | "&&&" | "|||" | "^^^" | "~~~" | "<<<" | ">>>"
+               | "<<" | ">>" | "\\" | "|" | "&" | "?:" | "'s" | ".." | "isa"
+                 /* "\\" = remoção. "'s" = acesso seguro (on op 's:) */
+
+/* Quote-operators: o apóstrofo vem COLADO ao operando anterior, sem espaço */
+QuoteS       ::= "'s"
+QuoteNth     ::= "'nth"
+QuoteHead    ::= "'head"
+QuoteTail    ::= "'tail"
+
+AssignOp     ::= "=" | "+=" | "-="
+
+/* Pontuação: ( ) [ ] { } %[ %{ #{ , : . .. ... -> => | :: ! ? @ & ' ` # */
+
+/* ---------- 1.5 Tokens de prefixo de modo (sensíveis a espaço) ---------- */
+/*  "!"  assíncrono  e  "?"  await: só prefixos, SEPARADOS da mensagem por
+    espaço.  "?:" é o Elvis; "!=" é diferente; "even?" tem "?" colado.
+    "&it" "&attrs" "&block": "&" colado a um identificador, após espaço ou
+    operador; "a & b" (espaçado) é o teste de subtipo.
+    "[" colado ao nome anterior ("IOBox[int]") abre argumentos de tipo;
+    "[" precedido de espaço abre um literal de vetor.
+    "-" é unário (sinal) quando colado ao operando seguinte e (precedido de
+    espaço OU de token que não termina operando):  -1   by -1   'nth -1.
+    "n - 1" e "n-1" são subtração.                                         */
+
+/* ---------- 1.6 Layout: separador de instruções ---------- */
+
+SEP          ::= NL | "."
+                 /* "." só é separador quando seguido de espaço/fim de linha
+                    (23.  é inteiro + separador; 1..5 é intervalo; 3.14 float).
+                    ";" NÃO separa: inicia comentário. */
+/* REGRAS DE LAYOUT (aplicadas pelo analisador léxico):
+   L1. Indentação NÃO é significativa; blocos fecham com "end" (ou "}" / "@end").
+   L2. Linhas em branco e comentários são ignorados.
+   L3. NL é significativo apenas quando o delimitador envolvente mais
+       interno é: topo do programa, corpo de "do..end", corpo de bloco "{ }"
+       ou de método. Dentro de ( ) [ ] %[ ] e de { } #{ } %{ } de OBJETO,
+       NL vira espaço — mas um "do..end" interno volta a tornar NL
+       significativo dentro dele.
+   L4. NL é suprimido (a linha continua) quando a linha ANTERIOR termina em:
+         ","  ":" (parte de mensagem ou par)  "="  "+="  "-="  "=>"  "->"
+         ou em operador binário;
+       ou quando a linha SEGUINTE começa com: "&&" "||" "and" "or" (infixos)
+         ou com as partes de mensagem "then" / "otherwise" / "rescue".
+   L5. "otherwise" no início de instrução, dentro de um "do", encerra o corpo
+       e abre o próximo "do" (ChainedDo). Idem "elsif"/"else" em IfExpr.     */
+
+
+/* ======================================================================
+   2. SINTAXE
+   ====================================================================== */
+
+/* ---------- 2.1 Programa e corpos ---------- */
+
+Program      ::= Body EOF
+                 /* cada seção da spec é um programa independente */
+
+Body         ::= SEP* ( Item ( SEP+ Item )* SEP* )?
+
+Item         ::= Directive | Declaration | Statement
+
+BraceBlock   ::= "{" Body "}"                 /* NL significativo dentro */
+
+/* ---------- 2.2 Declarações ---------- */
+
+Declaration  ::= Binding | SignDecl | MethodDecl | DataDecl | AbstractDecl
+               | RecordDecl | ImplDecl | BehaviorDecl
+
+Binding      ::= ( "let" | "final" ) Identifier ( "," Identifier )* TypeRef? "=" Expr
+               | "var" MutName TypeRef? "=" Expr
+                 /* let x = 1 / let x int = 1 / final y str = "a"
+                    let inbox, outbox = (IOBox[int]) new: 1
+                    var @n = 0 / var @composites vec[int] = []
+                    final integer type = int / let s type[str] = str       */
+
+SignDecl     ::= "sign" "{" SignItem ( "," SignItem )* ( "->" TypeRef )? "}"
+SignItem     ::= TypeRef | "[" TypeRef ( "," TypeRef )* "]"
+                 /* sign { long }               -> tipa o próximo binding
+                    sign { double, int -> double }
+                    sign { [double, int] -> double }
+                    sign { outbox[str], inbox[str] }   (sem retorno)
+                    sign { T, U -> str }        (genéricos)
+                    sign { double, lambda[[double], double] -> double }     */
+
+DataDecl     ::= "data" TypeName "=" TypeRef
+                 /* data Integer = int ; data Id = union[int, str] */
+
+AbstractDecl ::= "abstract" "data" TypeName SEP* Body "end"      /* hierarquia de tipos */
+               | "abstract" TypeName SEP* Body "end"             /* abstract dispatch (métodos reutilizáveis) */
+
+/* ---------- 2.3 Tipos ---------- */
+
+TypeName     ::= Identifier | "obj" | "nil"
+TypeRef      ::= TypeName ( "[" TypeArgs "]" )?
+                 /* int  str  Box[T]  vec[int]  obj[any]  maybe[str]  try[int]
+                    task[int, str]  type[Math]  union[str, int]
+                    lambda[[int, int] int]  inbox[obj[any]]
+                    Dictionary[str, int]                                      */
+TypeArgs     ::= TypeArg ( ","? TypeArg )*        /* vírgula opcional entre args */
+TypeArg      ::= TypeRef | "[" TypeArgs "]"        /* lambda[[int, int] int] */
+TypeParams   ::= "[" Identifier ( "," Identifier )* "]"    /* record Box[T] */
+
+/* ---------- 2.4 Records ---------- */
+
+RecordDecl   ::= "record" TypeName TypeParams? ( "&" TypeRef )? Derivations?
+                 RecordBody "end"
+                 /* record Math end
+                    record Dog & Animal(Init, Repr, Prop) ... end
+                    record Dictionary[K, V](Init) ... end                    */
+Derivations  ::= "(" Identifier ( "," Identifier )* ")"
+                 /* derivações: Init Repr Ord Eq Iter Block Vec Proxy Prop,
+                    e/ou nomes de "abstract" (Engine, Fly, Deposit, Auditable) */
+RecordBody   ::= SEP* ( RecordMember SEP+ )*
+RecordMember ::= UseDecl | FieldDecl
+UseDecl      ::= "use" TypeRef "as" Identifier          /* composição estrutural */
+FieldDecl    ::= FieldLabel* Identifier TypeRef LabelBlock?
+                 /* readable _total int
+                    full_name str                   (público: sem "_")
+                    accessible _name str { a_label, other_label }
+                    _num int { accessible }
+                    proxied _account Account
+                    O ÚLTIMO identificador da linha é o tipo; o penúltimo o
+                    nome; os anteriores são labels (ver A9).                 */
+FieldLabel   ::= Identifier                  /* accessible readable configurable proxied ... */
+LabelBlock   ::= "{" Identifier ( "," Identifier )* "}"
+
+/* ---------- 2.5 impl, behavior e métodos ---------- */
+
+ImplDecl     ::= "impl" ImplTarget ( MethodDecl | SEP* ImplBody "end" )
+                 /* impl int ... end
+                    impl type[Math] ... end         (métodos "estáticos")
+                    impl T & Shape ... end          (qualquer subtipo)
+                    impl str on shout ... end       (forma inline: 1 método) */
+ImplTarget   ::= TypeRef | Identifier "&" TypeRef
+BehaviorDecl ::= "behavior" TypeRef SEP* ImplBody "end"       /* atores: só envio assíncrono */
+ImplBody     ::= Body
+
+MethodDecl   ::= "on" MethodHead ( "->" TypeRef )? ( "," "if" Expr )? MethodBody
+MethodBody   ::= "=" Expr                 /* definição em uma linha */
+               | SEP Body "end"           /* bloco; devolve a última expressão */
+MethodHead   ::= "op" OpSelector
+               | KeywordHead
+               | MethodName
+OpSelector   ::= OpSym ( ":" Param )?     /* on op +: other Vec2   on op 's: key tag */
+KeywordHead  ::= MethodName ":" Param ( ","? MethodName ":" Param )*
+                 /* on line_total: price double, quantity: qty int -> double
+                    on schedule: meeting, at: hour int, with: guest         */
+MethodName   ::= Identifier | SplicedName
+Param        ::= Identifier TypeRef?                       /* x   x int   customer T */
+               | "[" ParamElem ( "," ParamElem )* "]"      /* posicionais: [base, discount, tax] */
+               | "..." Identifier                          /* variádico */
+ParamElem    ::= Identifier TypeRef?
+                 /* Uma definição usa tipos inline OU "sign", nunca os dois. */
+
+/* ---------- 2.6 Metaprogramação (tempo de compilação) ---------- */
+
+Directive    ::= DirIf | DirFor
+DirIf        ::= "@if" Expr SEP Body ( "@elsif" Expr SEP Body )*
+                 ( "@else" SEP Body )? "@end"
+DirFor       ::= "@for" Identifier "in" Expr SEP Body "@end"
+                 /* corpos podem conter métodos, instruções, etc.;
+                    "&attrs" e "'(expr)" valem dentro de impl/abstract.
+                    "@doc ... @end" é DocBlock (trivia).                    */
+
+/* ---------- 2.7 Instruções ---------- */
+
+Statement    ::= Assignment
+               | "return" Expr?
+               | "break"
+               | "next"
+               | WhileStmt | UntilStmt | BeingStmt | LoopStmt
+               | Expr
+
+Assignment   ::= AssignTarget AssignOp Expr
+AssignTarget ::= MutName | "self" | Identifier
+                 /* @n += 1 ; self = self | {#v: 1} ; name = a_name
+                    (Identifier: campo do objeto dentro de lambdas de #{ })  */
+
+WhileStmt    ::= "while" Expr SEP Body "end"
+UntilStmt    ::= "until" Expr SEP Body "end"            /* executa enquanto FALSO */
+BeingStmt    ::= "being" Identifier "=" Expr ( "while" | "until" ) Expr SEP Body "end"
+LoopStmt     ::= "loop" LambdaLit                       /* loop do ... end */
+
+/* ---------- 2.8 Expressões de bloco (produzem valor) ---------- */
+
+BlockExpr    ::= IfExpr | UnlessExpr | WhenExpr | ForExpr | AlternateExpr
+
+IfExpr       ::= "if" Expr "yield" Expr "else" Expr                     /* ternário, sem "end" */
+               | "if" Expr IfBody ( "elsif" Expr IfBody )* ( "else" IfBody )? "end"
+IfBody       ::= "do"? SEP Body
+                 /* "do" explícito: o bloco devolve a última expressão
+                    (if c do .. elsif c do .. else do .. end) */
+
+UnlessExpr   ::= "unless" Expr SEP Body "end"
+
+WhenExpr     ::= "when" Expr SEP+ ( WhenArm SEP+ )+ ( "default" "=>" ArmBody SEP+ )? "end"
+WhenArm      ::= "is" Pattern ( "," Pattern )* ( "," "if" Expr )? "=>" ArmBody
+Pattern      ::= OpExpr | "_"
+                 /* is 1, 7 => ...   is 2..6 => ...   is x, if x > 7 => ...
+                    is #negative => ...   is "incremente" => ...             */
+ArmBody      ::= SEP Body                        /* multilinha: vai até o próximo is/default/end */
+               | Expr
+
+AlternateExpr ::= "alternate" SEP+ ( AltArm SEP+ )+ ( "default" "=>" ArmBody SEP+ )? "end"
+                 /* DECISÃO I2: "default =>" em when E alternate */
+AltArm       ::= "is" "(" Expr ")" ( "receive" ( Identifier | "_" ) | "closed" ) "=>" ArmBody
+
+ForExpr      ::= "for" ForVars "in" Expr ForTail
+ForVars      ::= Identifier ( "," Identifier )*
+ForTail      ::= "yield" Expr ( "if" Expr )?     /* comprehension (vetor/objeto) */
+               | SEP Body "end"                  /* laço */
+
+SpawnExpr    ::= "spawn" LambdaLit               /* spawn do..end   spawn |p| do..end */
+
+/* ---------- 2.9 Expressões ---------- */
+
+Expr         ::= PrefixCommand | BlockExpr | SendExpr | OpExpr
+                 /* ORDEM = preferência (PEG). Um SendExpr vai até o fim da
+                    linha: para compor em operadores, use parênteses.        */
+
+PrefixCommand ::= "show" Expr          /* devolve nil; "show" também é expressão */
+                | "read" Expr          /* lê entrada; devolve str */
+                | "!" Expr             /* despacho assíncrono; devolve task */
+                | "?" Expr             /* await de mensagem ou de task (try[T]) */
+                | SpawnExpr
+
+/* ---------- 2.10 Operadores (menor precedência primeiro) ---------- */
+
+OpExpr       ::= ElvisExpr
+ElvisExpr    ::= OrExpr ( "?:" ElvisExpr )?                          /* direita-associativo */
+OrExpr       ::= AndExpr ( ( "or" | "||" ) AndExpr )*
+AndExpr      ::= NotExpr ( ( "and" | "&&" ) NotExpr )*
+NotExpr      ::= "not" NotExpr | EqExpr
+EqExpr       ::= CmpExpr ( ( "==" | "!=" | "like" | "~" ) CmpExpr
+                         | ( "isa" | "&" ) TypeRef )*
+CmpExpr      ::= RangeExpr ( ( "<" | ">" | "<=" | ">=" ) RangeExpr )*
+RangeExpr    ::= CollExpr ( ".." CollExpr
+                          | "to" CollExpr ( "by" CollExpr )? )?      /* não associativo */
+CollExpr     ::= BitOrExpr ( ( "<<" | ">>" | "|" ) BitOrExpr
+                           | "\\" BitOrExpr ( "," BitOrExpr )* )*
+                 /* << >> (adicionar), \\ (remover, aceita lista), | (copiar-com) */
+BitOrExpr    ::= BitXorExpr ( "|||" BitXorExpr )*
+BitXorExpr   ::= BitAndExpr ( "^^^" BitAndExpr )*
+BitAndExpr   ::= ShiftExpr ( "&&&" ShiftExpr )*
+ShiftExpr    ::= AddExpr ( ( "<<<" | ">>>" ) AddExpr )*
+AddExpr      ::= MulExpr ( ( "+" | "-" ) MulExpr )*
+MulExpr      ::= UnaryExpr ( ( "*" | "/" | "//" | "%" ) UnaryExpr )*
+UnaryExpr    ::= ( "-" | "~~~" ) UnaryExpr | PowExpr
+PowExpr      ::= PostfixExpr ( "**" UnaryExpr )?                     /* direita-associativo */
+
+PostfixExpr  ::= Primary PostfixOp*
+PostfixOp    ::= QuoteS QArg                 /* user's #name      @dist's n          */
+               | QuoteNth NthArg             /* v'nth 0   v'nth -1   v'nth 0..1    */
+               | QuoteHead | QuoteTail       /* v'head   v'tail                    */
+               | "::" TypeRef                /* conversão: "42"::int  (devolve try[T]) */
+               | "rescue" LambdaLit          /* (expr) rescue |f| { ... }          */
+QArg         ::= TagLit | VarRef | VectorLit | "(" Expr ")"          /* 's [#a, #b] */
+NthArg       ::= SignedInt ( ".." SignedInt )? | VarRef | "(" Expr ")"
+SignedInt    ::= "-"? IntLit
+
+/* ---------- 2.11 Envio de mensagens ---------- */
+
+SendExpr     ::= ExplicitSend | ImplicitSend
+ExplicitSend ::= "(" Expr ")" Part+ AnonBlock?
+                 /* (receptor) mensagem  — a forma canônica.
+                    (n) even? then { ... } otherwise { ... }
+                    (name_list) insert "Emma" at 3
+                    (Shipping) cost: 3.0 to: #local
+                    (5) +: 3                                                 */
+ImplicitSend ::= Part+ AnonBlock?
+                 /* receptor implícito (self/global): fib: 10 ; store_name ;
+                    list_items: "a", "b" ; matches "A" against "B".
+                    A 1ª parte precisa ter ":" ou argumentos; um Identifier
+                    sozinho é VarRef (Primary).                              */
+Part         ::= PartSel ArgList?             /* ArgList presente sse [pred: aridade > 0] (A1) */
+PartSel      ::= PartName ":"? | OpSym ":"
+PartName     ::= Identifier | SplicedName        /* "to"/"by" excluídas (Reserved) */
+ArgList      ::= Arg ( "," !( PartName ":" ) Arg )*
+                 /* vírgula = próximo posicional OU próxima parte "nome:"   */
+AnonBlock    ::= "=>" LambdaLit               /* with_margin 80.0 => |p| ... end */
+
+Arg          ::= ChainedDo
+               | BraceBlock
+               | ComposedArg
+               | TagPair
+               | OpExpr
+ChainedDo    ::= "do" Body ( "otherwise" "do" Body )+ "end"
+                 /* (c) then do A otherwise do B end   — UM só "end" */
+ComposedArg  ::= "(" Identifier ")" "has" ArgList        /* (info) has "Main Shop", 99 */
+TagPair      ::= TagLit ":" Expr                         /* has? #name: "George" */
+                 /* DECISÃO I4: não há literal numérico com unidade. Escreve-se
+                    (Time) after (5) seconds — receptor sempre entre parênteses. */
+
+/* ---------- 2.12 Primários, literais compostos, lambdas ---------- */
+
+Primary      ::= Literal
+               | CollectionLit
+               | LambdaLit
+               | SpecialRef
+               | TypeApp
+               | PairParen
+               | "(" Expr ")"
+               | Splice
+               | VarRef
+
+Literal      ::= FloatLit | IntLit | StringLit | RegexLit | RawStringLit
+               | HeredocLit | CharLit | TagLit | BoolLit | NilLit
+VarRef       ::= MutName | SplicedName | Identifier
+TypeApp      ::= Identifier "[" TypeArgs "]"        /* "[" colado: (IOBox[int]) new: 2 */
+
+CollectionLit ::= VectorLit | WordVectorLit | ObjectLit | WordObjectLit
+VectorLit    ::= "[" ( Expr ( "," Expr )* ","? )? "]"           /* [1, 2, 3] */
+WordVectorLit ::= "%[" Primary* "]"                              /* %[1 2 3]  sem vírgulas */
+ObjectLit    ::= "{" TagPairList? "}"                            /* {#id: 1, #name: "Carlos"} */
+               | "#{" PairList? "}"                              /* #{id: 1, name: "Carlos"}  */
+WordObjectLit ::= "%{" ( Pair )* "}"                             /* %{type: "x" style: "y"}   */
+TagPairList  ::= TagPair2 ( ","? TagPair2 )* ","?                /* só chaves #tag */
+TagPair2     ::= ( TagLit | Splice ) ":" ( Expr | LambdaLit )
+PairList     ::= Pair ( ","? Pair )* ","?                        /* vírgula ou quebra de linha */
+Pair         ::= PairKey ":" ( Expr | LambdaLit )
+PairKey      ::= TagLit | SplicedName | Identifier
+                 /* DECISÃO I3: chave SEM "#" (bare) só existe em #{ } e %{ },
+                    onde é sempre TAG. Em { } a chave é obrigatoriamente #tag.
+                    #{ presents: do ... end,  deposit: |v| do ... end } */
+PairParen    ::= "(" Identifier ":" Expr ")"
+                 /* par de chave DINÂMICA: (node: dist) usa o VALOR da variável
+                    "node" como chave. Ver A2. */
+
+LambdaLit    ::= "do" Body "end"
+               | "|" LParams? "|" ( "->" TypeRef )? LambdaBody
+LParams      ::= LParam ( "," LParam )*
+LParam       ::= Identifier TypeRef?
+LambdaBody   ::= BraceBlock                 /* |x| { x * 2 } */
+               | "do" Body "end"            /* |x| do ... end */
+               | SEP Body "end"             /* |f|⏎ ... end   (rescue / =>) */
+                 /* Bloco sem parâmetros em posição de argumento:
+                    BraceBlock ( { &it * &it } ) — ver Arg.                  */
+
+
+/* ======================================================================
+   3. TABELA DE PRECEDÊNCIA (maior -> menor)
+   ----------------------------------------------------------------------
+    1  postfix        'sx  'nthx  'head  'tail  ::T  rescue λ        esquerda
+    2  prefixo        -  ~~~                                         direita
+    3  potência       **                                             direita
+    4  multiplicativo * / // %                                       esquerda
+    5  aditivo        + -                                            esquerda
+    6  deslocamento   <<< >>>                                        esquerda
+    7  AND bit-a-bit  &&&                                            esquerda
+    8  XOR bit-a-bit  ^^^                                            esquerda
+    9  OR bit-a-bit   |||                                            esquerda
+   10  coleções       << >> | \\                                     esquerda
+   11  intervalo      ..   to [by]                                   não assoc.
+   12  relacional     < > <= >=                                      esquerda
+   13  igualdade/tipo == != like ~ isa &                             esquerda
+   14  NÃO lógico     not                                            prefixo
+   15  E lógico       and &&                                         esquerda
+   16  OU lógico      or ||                                          esquerda
+   17  Elvis          ?:                                             direita
+   18  envio (SendExpr), PrefixCommand, BlockExpr — "gulosos" até o fim da linha
+   19  atribuição     = += -=   (instrução)
+   FIXADA por decisão do autor (a spec original não definia). Coerente com
+   todos os exemplos (ex.: self's #a == other's #a && ...).
+   Efeitos: x &&& 1 == 0 = (x &&& 1) == 0 ; v << a + b = v << (a + b) ;
+   not a == b = not (a == b) ; -2 ** 2 = -(2 ** 2) ; a ?: b or c = a ?: (b or c).
+   ====================================================================== */
+
+
+/* ======================================================================
+   4. AMBIGUIDADES E REGRAS DE DESAMBIGUAÇÃO
+   ----------------------------------------------------------------------
+   A spec escolheu uma sintaxe "como prosa" que NÃO é livre de contexto
+   pura. Estes são os pontos em que a gramática acima aceita mais de uma
+   leitura e o analisador deve decidir:
+
+   A1  ARIDADE (o ponto principal). "(x) even? then {..}" e "(r) result price"
+       têm a mesma forma "palavra palavra". Sem ":" não dá para saber se a
+       palavra seguinte é argumento ou a próxima parte. Regra: Part só leva
+       ArgList se a aridade do seletor, conhecida pela tabela de símbolos
+       (on/sign/builtins), for > 0. Com ":" (fib: 10) é sempre argumento.
+       Seletor desconhecido (perform, forward): aplicar guloso com
+       retrocesso, tratando como nova parte a palavra que seja seletor
+       conhecido seguido de início de argumento.
+       
+   A2  "(nome: expr)" é PairParen (par) OU ImplicitSend ("(fib: 10)").
+       Decide a tabela de símbolos: nome ligado como variável -> par.
+   A3  "{ ... }" é ObjectLit OU BraceBlock. É objeto se o 1º token é
+       "#tag" ":" (ou splice-tag), ou se é "{}" vazio em posição de
+       operando; caso contrário é bloco (then, otherwise, each, collect,
+       select, rescue, ...). Como chave bare é proibida em { } (I3),
+       "{ nome: 1 }" é sempre um bloco que contém um envio "nome: 1".
+   A4  (removida: "to"/"by" são sempre reservadas — decisão I1.)
+   A5  Vírgula: separa posicionais dentro de uma parte E partes entre si.
+       Depois de "," um "nome:" inicia nova parte (ver ArgList); caso
+       contrário é mais um argumento posicional.
+   A6  (removida: não existe literal numérico com unidade — decisão I4.)
+   A7  "?" e "!" prefixo (await/async) vs. sufixo de nome (even?), "?:"
+       (Elvis) e "!=": decidido pelo léxico (ver 1.5).
+   A8  "IF cond do": o "do" imediatamente após a condição pertence ao "if"
+       (IfBody), nunca à condição.
+   A9  FieldDecl: contar identificadores da linha: último = tipo, penúltimo
+       = nome, demais = labels. (Tipo pode ter "[...]" colado.)
+   A10 "-": sinal ou subtração (regra do "colado", seção 1.5).
+   A11 "[": abre tipo (colado ao nome) ou vetor (após espaço).
+   A12 "&": teste de subtipo (espaçado) vs. "&it/&attrs/&block" (colado) vs.
+       "&&" / "&&&".
+   A13 "|": cópia-com (binário), delimitador de parâmetros de lambda,
+       "||" OU lógico, "|||" OU bit-a-bit — maior casamento no léxico.
+   A14 Chave bare (name:): só em #{ } e %{ }, sempre Tag. Em { } é proibida
+       (I3). Chave dinâmica: PairParen "(k: v)".
+   A15 "rescue": palavra reservada pós-fixa; vale após qualquer Primary
+       (inclusive Identifier solto:  invalid rescue |f| { ... }).
+   ====================================================================== */

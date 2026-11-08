@@ -1,0 +1,104 @@
+;# 00. Geração de código em tempo de compilação
+;; MachOne tem diversos recursos de metaprogramação, entre eles a geração de código em tempo de compilação
+
+;; @if
+let x = 10 
+@if x == 10
+    on say_hello ; só é definido se a condição for verdadeira
+        return "Hello!"
+    end
+@end
+
+show say_hello ; -> Hello!
+
+;; @if/@else
+let type_var = int 
+@if type_var == int 
+    on the_type
+        return "É inteiro!"
+    end
+@elsif type_var == str
+    on the_type
+        return "É string!"
+    end
+@else
+    on the_type
+        return "Outro Tipo!"
+    end
+@end
+
+show the_type ; -> É inteiro!
+
+;; @for 
+@for i in 0..3
+    on mult_'(i) ; use "'(expr)" para adicionar uma expressão no código gerado
+        return '(i * 10)
+    end
+@end
+
+show mult_1 ; -> 10
+show mult_2 ; -> 20
+show mult_3 ; -> 30
+
+;# 00. O operador &attrs
+record Type1(Init, Prop)
+    accessible _name str
+    accessible _num int
+end
+
+record Type2(Init, Prop)
+    accessible _name str { a_label, other_label } ; você pode adicionar várias labels
+    _num int { accessible } ; um atributo pode ter uma, nenhuma ou várias labels
+    accessible _code str
+end
+
+impl Type1
+    on print_attrs
+        show &attrs ; referenciam os atributos do tipo em questão
+    end
+end
+
+impl Type2
+    on print_attrs 
+        show &attrs
+    end
+end
+
+let type1 = (Type1) new: "tipo 1", 42
+let type2 = (Type2) new: "tipo 2", 67, "XYZ123"
+
+(type1) print_attrs
+;; -> [{#name: "name", #type: str, #labels: [#accessible]}, {#name: "num", #type: int, #labels: [#accessible]}]
+
+(type2) print_attrs
+;; -> [{#name: "name", #type: str, #labels: [#accessible, #a_label, #other_label]}, {#name: "num", #type: int, #labels: [#accessible]}, {#name: "code", #type: str, #labels: [#accessible]}]
+
+;; &attrs lista todos os atributos de um record, seus nomes, tipos e labels
+
+;; Você pode unir esses recursos para gerar métodos automaticamente 
+;; Exemplo: gerando getters e setters de forma automática sem labels
+record Product(Init)
+    _name str
+    _price double
+end
+
+impl Product
+    ;; attr é um item de &attrs (objeto com #name, #type e #labels): o nome vem de attr's #name
+    @for attr in &attrs 
+        on get_'(attr's #name)
+            return self's #'(attr's #name)
+        end
+
+        on set_'(attr's #name): value 
+            self = self | {#'(attr's #name): value}
+        end
+    @end
+end
+
+let product = (Product) new: "Mouse", 150.0
+
+show (product) get_name  ; Mouse
+show (product) get_price ; 150.0
+
+(product) set_name: "Mouse RGB"
+(product) set_price: 180.0

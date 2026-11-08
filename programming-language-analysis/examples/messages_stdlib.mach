@@ -1,0 +1,35 @@
+; Composição incorpora os campos e as mensagens de Contact ao record final.
+record Contact(Init, Prop)
+    readable _name str
+end
+impl Contact
+    on greeting = "Olá, $(self's #name)!"
+end
+
+record Customer(Init, Repr)
+    use Contact as contact
+    points int
+end
+
+let customer = (Customer) new (contact) has "Adrian", 29
+show (customer) greeting
+show ((customer) perform #greeting) rescue |failure| { (failure) message }
+
+; Argumentos variádicos chegam como vetor.
+on total: ...values int -> int
+    (values) sum
+end
+show total 2, 3, 5
+
+; Filtro, iteração e transformação preservam a sintaxe de mensagens.
+let evens = for n in 1..6 yield n * 10 if (n) even?
+show evens
+(evens) each |value int| { show value }
+
+(1) upto 3 => |index int| { show index }
+(3) downto 1 => |index int| { show index }
+(true) then { show "mensagens" } otherwise { show "outro caminho" }
+
+; Pair faz parte da biblioteca escrita em MachOne e carregada automaticamente.
+let pair = (Pair) new #language, "MachOne"
+show (pair) second

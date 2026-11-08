@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$root/cli/build/install/mach/bin/mach" ]; then
+    printf '%s\n' 'Execute ./gradlew :cli:installDist antes de usar mach.' >&2
+    exit 2
+fi
+exec "$root/cli/build/install/mach/bin/mach" "$@"

@@ -1,0 +1,20 @@
+abstract Deposit
+    @for attr in &attrs
+        @if (attr's #labels) has_value? #depositable
+            on deposit_'(attr's #name): value
+                self = self | {#'(attr's #name): self's #'(attr's #name) + value}
+            end
+            on get_'(attr's #name)
+                self's #'(attr's #name)
+            end
+        @end
+    @end
+end
+
+record Wallet(Init, Deposit)
+    depositable _balance double
+end
+
+let wallet = (Wallet) new 0.0
+(wallet) deposit_balance 150.0
+show (wallet) get_balance

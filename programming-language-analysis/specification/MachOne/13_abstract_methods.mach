@@ -1,0 +1,95 @@
+;# 00. Composição Estrutural
+record BaseInfo(Init, Repr, Prop)
+    accessible _title str
+    accessible _code int
+end
+
+record LocationInfo(Init, Repr, Prop)
+    accessible _street str
+    accessible _city str
+end
+
+record FinalStore(Init, Repr, Prop) 
+    use BaseInfo as info
+    use LocationInfo as loc
+    readable _store_id long
+end
+
+let my_store = (FinalStore) new: 
+    (info) has "Main Shop", 99,
+    (loc) has "Main Ave", "New York",
+    777
+
+;# 00. Abstract Dispatches
+;; Abstract Dispatches definem um grupo de metodos abstratos (ou seja não concretos)
+abstract Engine
+    on start 
+        show "Engine Started!"
+    end
+end
+
+; (Engine) start - Erro! o método não é concreto
+
+record Car(Engine, Init, Prop)  ; Tornando-o concreto
+    accessible _car_name str
+end
+
+record Cycle(Engine, Init, Prop) 
+    accessible _cycle_name str
+end
+
+let my_car = (Car) new: "Civic"
+let my_cycle = (Cycle) new: "250cc"
+
+(my_car) start   ; Engine Started!
+(my_cycle) start ; Engine Started!
+
+;# 00. Labels
+;; Veja o exemplo de código abaixo
+record BasicWallet(Init) 
+    _main_balance double
+    _vault_balance double
+end
+
+impl BasicWallet
+    on deposit_main: amount 
+        self = self | {#main_balance: self's #main_balance + amount}
+    end
+
+    on deposit_vault: amount 
+        self = self | {#vault_balance: self's #vault_balance + amount}
+    end
+end
+
+;; Veja como os métodos de deposito se repetem diversas vezes no código
+;; para evitar isso podemos usar Abstract Dispatches para gerar métodos automaticamente
+
+abstract Deposit
+    @for attr in &attrs
+        @if (attr's #labels) has_value? #depositable
+            on deposit_'(attr's #name): value 
+                self = self | {#'(attr's #name): self's #'(attr's #name) + value}
+            end
+
+            on get_'(attr's #name) 
+                self's #'(attr's #name)
+            end
+        @end
+    @end
+end
+ 
+record FlexWallet(Init, Deposit) 
+    depositable _main_balance double ; Marca como depositável
+    depositable _vault_balance double
+    _reserve_balance double { depositable } ; Também é possível / permite várias labels
+end
+
+let wallet_inst = (FlexWallet) new: 0.0, 0.0, 0.0
+
+(wallet_inst) deposit_main_balance 150.0
+(wallet_inst) deposit_vault_balance 500.0
+(wallet_inst) deposit_reserve_balance 50.0
+
+(wallet_inst) get_main_balance    ; 150.0
+(wallet_inst) get_vault_balance   ; 500.0
+(wallet_inst) get_reserve_balance ; 50.0

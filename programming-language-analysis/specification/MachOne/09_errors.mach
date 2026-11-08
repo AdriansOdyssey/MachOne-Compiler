@@ -1,0 +1,98 @@
+;# 00. Tipo Nulo (nil)
+let nil_example maybe[any] = nil ; variável com valor nulo
+
+;; valores opcionais
+let nickname maybe[str] = nil     ; Ok
+
+;; "?:" (Elvis operator) devolve o valor padrão apenas quando o lado esquerdo é nil
+let settings = #{host: "db.local", port: nil}
+let host = settings's #host ?: "localhost" ; -> db.local
+let port = settings's #port ?: 5432        ; -> 5432
+let user = settings's #user ?: "admin"     ; -> admin - chave inexistente também é nil
+
+(settings) maybe_get #user ; nil
+(settings) get #user       ; Fail! - get é estrito, maybe_get e 's são seguros
+
+;# 00. Erros como tipos (Fail)
+;; "raise" apenas LANÇA o Fail, quem devolve é o "return"
+let current_error = (Fail) raise "Erro Genérico!"
+(current_error) type  ; fail
+
+(current_error) fail? ; true
+(current_error) ok?   ; false
+
+;; Uniões com o tipo Fail
+let failable_str try[str] = "String sem erros"
+let failable_str try[str] = (Fail) raise "String com erro"
+
+;; uma tag pode classificar a falha: (Fail) raise #tag, "mensagem"
+sign { int -> try[int] }
+on validate_age: age
+    (age < 0) then { return (Fail) raise #negative, "idade negativa: $age" }
+    (age > 130) then { return (Fail) raise #too_old, "idade absurda: $age" }
+    age ; retorno normal
+end
+
+;; "return" em um bloco "do" sai do método, em um lambda "||" sai só do lambda
+
+;# 00. Tratativa de Erros (rescue)
+;; "rescue" troca um Fail por outro valor, senão devolve o próprio valor
+let age_a = (validate_age: -5) rescue |f| { 18 } ; 18
+let age_b = (validate_age: 30) rescue |f| { 18 } ; 30 - o bloco não executa
+
+;; entrada do usuário - "::" falha se o texto não for um número
+final raw = read "Quantos itens? "
+let qty = (raw::int) rescue |f| { 1 }
+
+;; "?:" trata nil, "rescue" trata Fail, e podem ser combinados
+let retries = (settings's #retries ?: "3")::int rescue |f| { 3 } ; "?:" executa primeiro
+
+;; (f) kind devolve a tag da falha
+let clamped = (validate_age: 200) rescue |f|
+    when (f) kind
+        is #negative => 0
+        is #too_old  => 130
+        default      => 18
+    end
+end
+
+;# 00. Propagando Falhas
+;; não existe operador de propagação, confira com "fail?" e devolva o Fail
+sign { str -> try[str] }
+on describe_age: input
+    let age = input::int
+    (age) fail? then { return age } ; a partir daqui "age" é int, não try[int]
+    let valid = validate_age: age
+    (valid) fail? then { return valid }
+    "Idade válida: $valid"
+end
+
+;# 00. Falhas em Coleções
+let lines = ["8.5", "7", "abc", "9.5"]
+var @total = 0.0
+var @count = 0
+
+for line in lines
+    let grade = line::double
+    (grade) ok? then do ; dentro do bloco "grade" é double
+        @total += grade
+        @count += 1
+    otherwise do
+        show "linha ignorada ($line): $grade"
+    end
+end
+
+let mean = if @count > 0 yield @total / @count else (Fail) raise "nenhuma nota válida"
+let mean_or_zero = (mean) rescue |f| { 0.0 }
+show mean_or_zero ; -> 8.333333333333334
+
+@doc
+    # Detalhes Importantes
+    - nil e Fail são diferentes: "?:" trata nil e "rescue" trata Fail
+    - Operações nativas que falham têm tipo try[T]:
+      "abc"::int, 10 // 0, 10 % 0, (vec) element_at 9 e (obj) get #chave
+    - Usar try[T] onde T é esperado sem "rescue" ou "fail?" é erro de compilação
+    - Um Fail ignorado ou que chega ao fim do programa imprime "Erro: <mensagem>" e encerra com código 1
+    - Para ignorar de propósito use (expr) rescue |f| { nil }
+    - Ausência esperada usa maybe[T] com "?:", falha com motivo usa try[T] e "rescue"
+@end

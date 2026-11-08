@@ -1,0 +1,170 @@
+;# 00. Fibonacci Recursivo
+;; Algoritmos funcionais usam recursão e guards, os imperativos usam var, while e blocos
+on fib: n, if n < 2 = n
+on fib: n = (fib: (n - 1)) + (fib: (n - 2))
+
+show (fib: 10) ; -> 55
+
+;# 00. Máximo Divisor Comum (Euclides)
+on gcd: a, with: b, if b == 0 = a
+on gcd: a, with: b = gcd: b, with: (a % b)
+
+show gcd: 48 with: 18 ; -> 6
+
+;# 00. Torres de Hanói
+sign { int, str, str, str -> int }
+on hanoi: n, from: src, via: aux, target: dst
+    (n == 0) then do 
+        return 0
+    end
+    let before = hanoi: (n - 1) from: src via: dst target: aux
+    show "Disco $n: $src -> $dst"
+    let after = hanoi: (n - 1) from: aux via: src target: dst
+    before + after + 1
+end
+
+show hanoi: 3 from: "A" via: "B" target: "C" ; -> 7 movimentos
+
+;# 00. Currying
+;; um lambda que devolve outro lambda: cada argumento é aplicado por vez
+let add = |a| { |b| { a + b } }
+let add_five = (add) result 5
+
+(add_five) result 3 ; 8
+
+;; curry genérico: transforma um lambda de 2 argumentos em dois lambdas de 1    
+on curry: fn = |a| { |b| { (fn) result a, b } }
+
+let mult = |a, b| { a * b }
+let double_it = ((curry: mult) result 2)
+
+(double_it) result 21 ; 42
+
+;# 00. Quicksort
+on quicksort: items, if ((items) length) < 2 = items
+on quicksort: items
+    let pivot = items'head
+    let rest = items'tail
+    let smaller = (rest) select |n| { n < pivot }
+    let larger = (rest) reject |n| { n < pivot }
+    (quicksort: smaller) + [pivot] + (quicksort: larger)
+end
+
+show quicksort: [3, 6, 1, 8, 2, 9, 2] ; -> [1, 2, 2, 3, 6, 8, 9]
+
+;# 00. Busca Binária
+sign { vec[int], int -> try[int] }
+on binary_search: items, target: wanted
+    var @low = 0
+    var @high = ((items) length) - 1
+
+    while @low <= @high
+        let mid = (@low + @high) // 2
+        let value = items'nth mid
+        (value == wanted) then { return mid }
+        (value < wanted)
+            then { @low = mid + 1 }
+            otherwise { @high = mid - 1 }
+    end
+
+    (Fail) raise #not_found, "valor $wanted ausente"
+end
+
+let sorted = [1, 3, 5, 7, 9, 11]
+show (binary_search: sorted, target: 7)  ; -> 3
+show ((binary_search: sorted, target: 4) rescue |f| { -1 }) ; -> -1
+
+;# 00. Crivo de Eratóstenes
+on sieve: limit int
+    var @composites vec[int] = []
+    var @primes vec[int] = []
+
+    for n in 2..limit
+        ((@composites) has? n) then { next }
+        @primes = @primes << n
+        for m in (n * n) to (limit + 1) by n
+            @composites = @composites << m
+        end
+    end
+
+    @primes
+end
+
+show (sieve: 30) ; -> [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+
+;# 00. Conjectura de Collatz
+on collatz_steps: start int
+    var @n = start
+    var @steps = 0
+
+    while @n != 1
+        (@n) even?
+            then { @n = @n // 2 }
+            otherwise { @n = 3 * @n + 1 }
+        @steps += 1
+    end
+
+    @steps
+end
+
+show (collatz_steps: 27) ; -> 111
+
+;# 00. Trabb Pardo-Knuth
+;; lê 11 números e os processa em ordem inversa: f(x) = sqrt(|x|) + 5x³
+on tpk_f: x = (((x) abs) ** 0.5) + (5.0 * (x ** 3))
+
+var @inputs vec[double] = []
+
+(11) times do
+    let raw = read "Número: "
+    @inputs = @inputs << ((raw::double) rescue |f| { 0.0 })
+end
+
+let reversed = (@inputs) reverse
+
+(reversed) each |x| do
+    let y = tpk_f: x
+    (y > 400.0)
+        then { show "$x TOO LARGE" }
+        otherwise { show "$x $y:.2" }
+end
+
+;# 00. Dijkstra
+;; menor caminho em um grafo ponderado: o grafo é um object de objects (nó: {vizinho: peso})
+on dijkstra: graph, source: start
+    let inf = 1_000_000
+    var @dist = #{}
+    var @todo = []
+
+    for node, edges in graph
+        @dist = @dist << (node: ((node == start) then 0 otherwise inf))
+        @todo = @todo << node
+    end
+
+    while ((@todo) length) > 0
+        var @best = @todo'head
+        (@todo) each |n| do
+            ((@dist's n) < (@dist's @best)) then { @best = n }
+        end
+        @todo = (@todo) delete @best
+
+        for neighbor, weight in graph's @best
+            let candidate = (@dist's @best) + weight
+            (candidate < (@dist's neighbor))
+                then { @dist = (@dist) copy_with (neighbor: candidate) }
+        end
+    end
+
+    @dist
+end
+
+let roads = #{
+    a: #{b: 7, c: 9, f: 14},
+    b: #{a: 7, c: 10, d: 15},
+    c: #{a: 9, b: 10, d: 11, f: 2},
+    d: #{b: 15, c: 11, e: 6},
+    e: #{d: 6, f: 9},
+    f: #{a: 14, c: 2, e: 9}
+}
+
+show dijkstra: roads source: #a ; -> {#a: 0, #b: 7, #c: 9, #d: 20, #e: 20, #f: 11}

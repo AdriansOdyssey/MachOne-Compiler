@@ -1,0 +1,8 @@
+module math
+
+record Math(Init)
+end
+
+impl type[Math]
+    on PI_value -> float = 3.141592653589793
+end

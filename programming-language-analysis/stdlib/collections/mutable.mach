@@ -1,0 +1,14 @@
+module collections/mutable
+
+; Side-effectful collections are intentionally isolated from the immutable
+; persistent built-ins. This namespace includes explicit mutating data
+; structures for programs that opt into stateful behavior.
+;
+; Supported runtime families include:
+;   MutableArray[T], MutableSet[T], MutableDeque[T], MutableDictionary[K, V]
+; and other explicit mutators that are not part of the persistent core model.
+;
+; Examples:
+;   let xs = (MutableArray[int]) new [1, 2, 3]
+;   (xs) put: 9 at: 1
+;   (xs) append 4

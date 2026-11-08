@@ -1,0 +1,9 @@
+record Point(Init, Repr, Prop)
+    accessible _x int
+    readable _y int
+end
+let point = (Point) new: 1, 2
+show point
+show (point) x
+(point) x: 7
+show (point) x

@@ -1,0 +1,117 @@
+;# 00. Tipos de Dados
+final auto_string = "MachOne"         ; Inferência automática para string
+final explicit_type str = "Language" ; Tipo string explicito
+
+"42" == 42 ; Avalia como false (tipagem forte)
+
+final status_on = true         ; Booleano
+final status_off bool = false ; Booleano explicito
+
+;; Formatações de String
+final common_str = "Essa é uma string comm!\n" ; permitem escape
+final rgx_str = ~"^\d+$" ; string de regex (não admite escape)
+final noescape_str = \"Essa string não pulará a linha\n"
+final character char = `A` ; tipo char, apenas um caractere (definido com `)
+
+final fmt_str = "$example, isso é uma interpolação de variaveis!"
+final fmt_expr_str = "$((auto_string) upcase), isso é uma interpolação de expressões!"
+
+final multi_lines = begin{BASH}
+sudo rm -rf / --no-preserve-root
+echo "There is no spoon"
+exit
+end{BASH}
+
+;; Inteiros com sinal (Signed)
+let positive_byte byte = 12
+let positive_short short = 3000
+let positive_int int = 500_000
+let positive_long long = 9_999_999_999
+
+;; Inteiros sem sinal (Unsigned)
+let natural_byte ubyte = 200
+let natural_short ushort = 60000
+let natural_int uint = 4_000_000
+let natural_long ulong = 8_888_888_888
+
+;; Ponto flutuante
+let pi_value float = 3.14
+let scientific_value double = 1.234567
+
+;; Tags (Identificadores curtos indexados)
+let response_code tag = #ok
+
+;; O tipo 'type' espera um alias de tipo como parâmetro
+final integer type = int ; 'int' é um alias de tipo e um tipo de dado também
+show integer ; [type "int"]
+let my_num integer = 10 ; Ok!
+
+;; Você pode especificar o tipo
+;; let str_alias type[str] = int - Erro!
+let str_alias type[str] = str ; Ok!
+
+;; Conferindo se o objeto é de um tipo
+let num = 42
+(num) type  ; int
+num isa int ; true - num pertence a int
+
+;; Data cria um alias de tipo substituto
+data Integer = int
+let lucky_num Integer = 7
+
+;; Uniões 
+data Decimal = union[float, double]
+let phi Decimal = 1.618 
+phi isa Decimal ; true
+float & Number  ; true - "&" operador de subtipos (pertence à)
+
+;; "&" retorna true ou false quando queremos saber 
+;; se um tipo concreto pertence à um subtipo 
+
+;; Sign
+;; Ao invés de usar a sintaxe "binding type" você pode usar uma abordagem mais funcional
+sign { long } ; aplica o tipo no binding
+let x = 5 
+(x) type ; long
+
+;# 00. Lambdas
+;; Lambdas sem Argumentos
+let greet = do
+    show "Hello, World!"
+end
+
+(greet) result ; -> Hello, World!
+
+;; Com argumentos
+let make_calc = |a, b| do
+    let addition = a + b
+    let multiplication = a * b
+    return "$addition, $multiplication"
+end
+
+let calc_output = (make_calc) result 5, 2 ; 7, 10
+
+;; inline
+let sum = |a, b| { return a + b }
+show (sum) result 5, 2 ; -> 7
+
+;; tipando 
+let mult lambda[[int, int] int] = |a int, b int| -> int do
+    a * b ; retorna a última linha por padrão
+end
+
+let sum lambda[[int, int] int] = |a int, b int| -> int { return a + b }
+;; lambda[[T, U...] V] cria um escopo de lambda, sendo o último tipo o do retorno
+
+;# 00. Conversão de Tipos (::)
+;; "::" converte um valor para outro tipo, e devolve try[T] pois a conversão pode falhar
+let parsed = "42"::int  ; 42
+let failed = "abc"::int ; Fail!
+let wide = 42::long     ; sem Fail quando a conversão é sempre possível
+
+;; Diferente de JavaScript, C ou Java, MachOne não usa ";" para separar comandos
+;; let age = 23; let name = "John"; show "$name $age" - Tudo depois de ";" será desconsiderado
+;; ao invés disso use o "." 
+let age = 23. let name = "John". show "$name $age". (name) upcase. ; executará um de cada vez
+;; Essa é uma opção se você quer vários comandos em uma só linha 
+;; Mas o padrão é utilizar quebra de linhas para separar statements

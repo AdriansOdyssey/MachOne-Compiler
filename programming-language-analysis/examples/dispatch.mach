@@ -1,0 +1,4 @@
+on identify: value int -> str = "integer"
+on identify: value str -> str = "string"
+show identify: 42
+show identify: "MachOne"

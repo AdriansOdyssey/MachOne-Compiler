@@ -1,0 +1,108 @@
+;# 00. Polimorfismo
+;; Em MachOne o Polimorfismo é dado pelo despacho multiplo
+record Dog(Init, Repr, Prop)
+    accessible _name str
+end
+
+record Cat(Init, Repr, Prop)
+    accessible _name str
+end
+
+impl Dog
+    on interact
+        show "The dog $(self's #name) says: 'Wof Wof!'"
+    end
+end
+
+impl Cat
+    on interact
+        show "The cat $(self's #name) says: 'Meow!'"
+    end
+end
+
+let rex = (Dog) new: "Rex"
+let mimi = (Cat) new: "Mimi"
+
+(rex) interact  ; -> The dog Rex says: 'Wof Wof!'
+(mimi) interact ; -> The cat Mimi says: 'Meow!'
+
+;; Aqui os métodos interact reagem de maneira diferente a depender do objeto
+
+;# 00. Abstract Datas
+;; (Dog e Cat são redefinidos aqui como subtipos de Animal: trate cada seção deste arquivo como um programa independente)
+;; Podemos usar Abstract Datas para criar uma hierarquia de tipos
+abstract data Animal 
+end
+
+record Dog & Animal(Init, Repr, Prop)  ; Dog é subtipo de Animal por padrão
+    accessible _name str
+end
+
+record Cat & Animal(Init, Repr, Prop) ; Cat é subtipo de Animal por padrão
+    accessible _name str
+end
+
+impl T & Animal ; Aqui o receptor pode ser qualquer tipo que pertence à Animal
+    on interact 
+      show "Generic Sound!"
+    end
+end
+
+let rex = (Dog) new: "Rex"
+let mimi = (Cat) new: "Mimi"
+
+show Dog & Animal ; -> true
+show Cat & Animal ; -> true
+
+(rex) interact  ; Generic Sound! 
+(mimi) interact ; Generic Sound! - cria um comportamento padrão
+
+;# 00. Diferença de Abstract Methods e Abstract Data
+;; Abstracts Methods diz respeito à composição de métodos
+abstract Fly
+    on fly
+        show "O objeto está voando!"
+    end
+end
+
+record Helicopter(Init, Fly)
+end
+
+record Plane(Init, Fly) ; os dois tipos tem acesso à mensagem "fly" 
+end
+
+let h = (Helicopter) new
+let p = (Plane) new
+
+(h) fly ; O objeto está voando!
+(p) fly ; O objeto está voando!
+
+;; Já Abstract Data diz respeito à Hierarquia de Tipos e Subtipagem
+abstract data Storage 
+end
+
+record SSD & Storage(Init)
+    capacity int
+end
+
+record HDD & Storage(Init)
+    capacity int
+end 
+
+impl SSD
+    on read 
+        show "Lendo SSD"
+    end
+end
+
+impl HDD
+    on read 
+        show "Lendo HDD"
+    end
+end
+
+let hd = (HDD) new: 1000
+let ssd = (SSD) new: 256
+
+(hd) read  ; Lendo HDD
+(ssd) read ; Lendo SSD - Polimorfismo

@@ -1,0 +1,152 @@
+;# 00. Mapas de Objetos (Vetores de Pares)
+let data_obj = {#id: 1, #name: "Carlos", #level: 3}
+
+;; sintaxes alternativas
+let data_obj2 = #{id: 2, name: "Júlio", level: 4} ; não precisa de "#" para chaves
+let obj_comma = %{type: "Object" style: "Without Comma"} ; sem virgula para separar valores
+
+;; Tipando
+let typed_obj obj[double] = #{apple: 5.5, banana: 3.2}
+
+;; Acessando elementos
+(data_obj) get_element #name ; Carlos
+(data_obj) element_at 0      ; {#id: 1}
+
+;; Você também pode usar o operador "'s" e "'nth"
+data_obj's #name ; Carlos
+data_obj'nth 0   ; {#id: 1}
+
+;; Copiando um objeto 
+let new_obj = (data_obj) copy
+new_obj == data_obj ; true
+
+;; Criando cópias com valores alterados
+let data_alt = (data_obj) copy_with {#level: 4}
+show data_alt ; {#id: 1, #name: "Carlos", #level: 4}
+
+;; Usando o operador "|" (tal que)
+let data_alt = data_obj | {#id: 2}
+show data_alt ; {#id: 2, #name: "Carlos", #level: 4}
+
+;; O operador "'s"
+let user_obj = #{name: "Andriw", age: 25, address: #{city: "New York", state: "NY"}}
+user_obj's #name                    ; Andriw
+user_obj's #email ?: "Sem Registro" ; Sem Registro
+
+;; "'nth" é usado para pegar pelo indice
+user_obj'nth 0    ; {#name: "Andriw"}
+user_obj'nth 0..1 ; {#name: "Andriw", #age: 25}
+user_obj'nth -1   ; #address: {#city: "New York", #state: "NY"}
+
+;; Conferindo a existencia de chaves ou valores 
+(data_alt) has_key? #name       ; true
+(data_alt) has_value? "Carlos"  ; true
+(data_alt) has? #name: "George" ; false
+
+;; Todos os Operadores Especiais
+;; Operadores especiais servem para manipular coleções de forma mais simples
+let user = #{name: "John", surname: "Wick", age: 61}
+user's #name                        ; (user) get #name 
+user's #cpf                         ; nil - seguro por padrão
+user'nth 0                          ; (user) element_at 0
+user'head                           ; John - retorna o primeiro elemento
+user'tail                           ; retorna o restante dos elementos
+user << {#email: "john@email.com"}  ; (user) append {#email: "john@email.com"}
+user \\ "John", "Wick"              ; (user) delete "John", "Wick"
+user | {#age: 62}                   ; (user) copy_with {#age: 62}
+
+@doc 
+    # Detalhe Importante 
+    - Vetores por padrão são Homogêneos, tipados com 'vec[T]'
+    - Para mudar isso você pode tipar um vetor com 'vec[any]'
+    - Já objetos literais (vetores de pares), por padrão são Heterogeneos 
+    - tipados com 'obj[any]', para mudar isso você pode tipar como
+    - 'obj[int]' ou 'obj[str]', o tipo que preferir
+    - Para não quebrar o modelo de tipagem forte de atributos use Records
+    - Chaves de pares ou objects nunca podem ter uma chave de outro tipo que não seja uma tag
+@end
+
+;# 00. Programação Orientada à Mapas de Objetos (OMOP)
+;; MachOne entrega OOP real usando records e impl de metodos
+;; porém também entrega um sistema robusto de object para prototipação rápida e jogos
+
+;; Atributos
+let person1 = #{name: "John", age: 20, profession: "Developer"} ; definindo atributos
+let person2 = (person1) copy_with {#name: "Ana", #age: 23, #profession: "Teacher"} ; copiando atributos
+let person3 = person1 | #{name: "Francis", age: 30, profession: "Pope"}
+
+;; Lambdas em objects (simulam métodos)
+let user = #{
+    name: "Jorge",
+    age: 25,
+
+    presents: do ; lambda
+        return "Olá, eu sou $name e tenho $age anos"
+    end
+}
+
+show user's #name ; "Jorge"
+show (user's #presents) result ; Olá, eu sou Jorge e tenho 25 anos
+
+;; Simulando um Construtor
+let product_model = #{
+    name: nil,
+    price: nil,
+
+    new: |a_name, a_price| do
+        name = a_name 
+        price = a_price
+    end
+}
+
+let product1 = (product_model's #new) result "Notebook", 3500.0
+let product2 = (product_model's #new) result "Mouse", 120.0
+
+;; Simulando Encapsulamento
+let bank_account = #{
+    balance: 0.0,
+
+    deposit: |value| do
+        (value <= 0) 
+            then { return } 
+            otherwise { balance = balance + value }
+    end,
+
+    consult: do
+        return balance
+    end
+}
+
+let account = bank_account | {#balance: 300.0}
+(account's #deposit) result 200.0 ; deposita 200.0 na conta
+show (account's #consult) result ; 500.0
+
+;; O problema desse modelo está na tipagem dinâmica e na ausência de atributos privados
+;; para resolver isso você deve usar records
+
+@doc
+    # Objeto: CHAMP
+
+    Objetos (#{..}) são imutáveis e persistentes, implementados como
+    um CHAMP (Compressed Hash-Array Mapped Prefix-tree), uma HAMT
+    otimizada. Logicamente são vetores de pares, e as chaves são
+    sempre tags.
+
+    - Nó: dois bitmaps de 32 bits, `datamap` (slots com entrada) e
+      `nodemap` (slots com subnó). Entradas e subnós ficam em regiões
+      separadas do mesmo array. Há nó de colisão no fim dos bits do
+      hash.
+    - Busca (`get`, `'s`, `has_key?`): 5 bits do hash da tag por nível.
+      O(log32 n), na prática O(1). Tags são internadas, então o hash é
+      pré-calculado e a comparação é por identidade.
+    - Escrita (`copy_with`, `|`, `<<`, `\\`): copia só o caminho
+      afetado, O(log32 n). `copy` é O(1), pois reaproveita a raiz.
+    - Forma canônica: a remoção reduz subnós de uma entrada. Dois
+      objetos com os mesmos pares têm a mesma árvore, e `==` compara
+      nós pareados com saída antecipada.
+    - Ordem: a spec exige ordem estável (`nth`, `head`, `tail`,
+      iteração), que o CHAMP não dá. O objeto mantém também um vetor
+      persistente com a ordem de inserção das tags.
+    - `obj[T]` é só checagem estática. Para atributos tipados e
+      privados, use records.
+@end
