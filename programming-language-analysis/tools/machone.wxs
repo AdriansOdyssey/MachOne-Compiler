@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="MachOne" Language="1033" Version="0.3.0" Manufacturer="MachOne" UpgradeCode="5D0A0F83-4D1D-47B8-BF17-D7BCCE261F27">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MediaTemplate />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="MachOne" />
+      </Directory>
+    </Directory>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="MachOneBinary" Guid="D6B4E3D5-165A-470E-AEA2-4A8CB7498D12">
+        <File Id="MachExe" Source="cli/build/install/mach/bin/mach.bat" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <Feature Id="MainFeature" Title="MachOne" Level="1">
+      <ComponentRef Id="MachOneBinary" />
+    </Feature>
+  </Product>
+</Wix>

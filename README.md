@@ -15,11 +15,42 @@ chmod +x gradlew mach
 ./mach run examples/messages_stdlib.mach
 ```
 
-Depois da instalação, para executar seu próprio arquivo:
+### Instalação global/local de comando
+
+O projeto já gera um launcher local em `cli/build/install/mach/bin/mach`, e o wrapper `./mach` usa esse binário. Para instalar um comando `machone` no PATH do usuário, use os instaladores incluídos:
 
 ```sh
-./mach run caminho/do/programa.mach
+./tools/install-machone.sh --user
+# ou, se quiser instalar no sistema:
+./tools/install-machone.sh --global
 ```
+
+No Windows PowerShell:
+
+```powershell
+pwsh -File .\tools\install-machone.ps1 -Mode user
+```
+
+Depois da instalação, os comandos ficam disponíveis como:
+
+```sh
+machone --version
+machone run caminho/do/programa.mach
+machone check examples/messages_stdlib.mach
+machone build examples/messages_stdlib.mach
+machone test
+```
+
+Para empacotar distribuições prontas para release:
+
+```sh
+./tools/package-release.sh linux
+./tools/package-release.sh macos
+pwsh -File ./tools/package-release.ps1 -Mode portable
+pwsh -File ./tools/package-release.ps1 -Mode msi
+```
+
+Os artefatos gerados ficam em `dist/` e incluem tarballs para Linux/macOS, RPM e ZIP, além de uma base para um MSI WiX quando o WiX Toolset estiver disponível.
 
 O caminho deve apontar para um arquivo que existe. `main.mach` e `seu_programa.mach` são nomes de exemplo, não arquivos criados automaticamente.
 
