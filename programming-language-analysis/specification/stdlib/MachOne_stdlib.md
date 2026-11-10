@@ -1,33 +1,33 @@
-# MachOne — Biblioteca Padrão (std lib)
+# MachOne — Standard library (std lib)
 
-Referência completa das mensagens, tipos e módulos da biblioteca padrão da MachOne.
+Reference for the messages, types and modules of MachOne standard library.
 
-> **Como ler este documento**
+> **How to read this document**
 >
-> - **[S]** = definido ou usado nos 19 arquivos da especificação (`01_basic` … `19_philosophy`). É o contrato que já existe.
-> - **[P]** = *proposto*. Inferido de Ruby, Smalltalk, Self, Objective-C, Erlang/Elixir, Go e Rust, e adaptado ao modelo da MachOne. Está aqui para você aprovar, renomear ou cortar.
-> - Quando uma mensagem tem os dois, vale a marca da forma que aparece na spec.
+> - **[S]** = defined or used in the specification files (`01_basic` … `17_philosophy`). This is the contract that already exists.
+> - **[P]** = *proposed*. Inferred from Ruby, Smalltalk, Self, Objective-C, Erlang/Elixir, Go, and Rust, then adapted to MachOne. It is here to be approved, renamed, or removed.
+> - When a message is marked both ways, the form in the spec wins.
 >
-> **Notação de assinatura:** `(receptor) seletor: arg arg2 -> Retorno`.
-> `T` é genérico. `vec[T]`, `obj[T]`, `maybe[T]`, `try[T]` seguem a spec.
-> `⟨bloco⟩` é um lambda passado por `|x| { … }`, `|x| do … end` ou `=> |x|`, e `&it` é o argumento implícito.
-> Mensagens sem argumento são unárias: `(x) upcase`.
+> **Signature notation:** `(receiver) selector: arg arg2 -> Return`.
+> `T` is generic. `vec[T]`, `obj[T]`, `maybe[T]`, `try[T]` follow the spec.
+> `⟨block⟩` is a lambda passed as `|x| { … }`, `|x| do … end` or `=> |x|`; `&it` is the implicit argument.
+> Messages without arguments are unary: `(x) upcase`.
 
 ---
 
-## 0. Princípios da biblioteca
+## 0. Library principles
 
-1. **Tudo é mensagem.** `show`, `read`, `then`, `each`, `+` são seletores. Operadores são `op` (`(a) +: b` ≡ `a + b`) **[S]**.
-2. **Valores são imutáveis e persistentes.** Vetores (RRB-Vector) e objetos (CHAMP) devolvem *novas* estruturas que compartilham memória **[S]**. Não existem métodos "bang" (`sort!`): `(v) sort` devolve um novo vetor. Quem muda estado são variáveis `@x` e records via `self = self | {...}`.
-3. **Despacho múltiplo.** A stdlib é escrita como `impl` por tipo, e o método mais específico vence **[S]**.
-4. **Duas formas de "não deu certo":**
-   - `maybe[T]` + `?:` → *ausência esperada* (`nil`).
-   - `try[T]` + `rescue` / `fail?` → *falha com motivo* (`Fail` com tag) **[S]**.
-5. **Convenções de nome**
-   - `?` no fim → predicado que devolve `bool` (`even?`, `has?`, `empty?`) **[S]**.
-   - `copy_with` → cópia com alteração **[S]**.
-   - `maybe_x` → versão segura de `x`, que devolve `nil` em vez de `Fail` (`maybe_get`, `maybe_slot`) **[S]**.
-   - Conversão: `::tipo` (`"42"::int`) devolve `try[T]` **[S]**; `to_x` só para conversões que nunca falham **[P]**.
+1. **Everything is a message.** `show`, `read`, `then`, `each`, `+` are selectors. Operators are `op` (`(a) +: b` ≡ `a + b`) **[S]**.
+2. **Values are immutable and persistent.** Vectors (RRB-Vector) and objects (CHAMP) return *new* structures that share memory **[S]**. There are no bang methods (`sort!`): `(v) sort` returns a new vector. State changes are done via `@x` variables and records through `self = self | {...}`.
+3. **Multiple dispatch.** The standard library is written as `impl` by type, and the most specific method wins **[S]**.
+4. **Two forms of “not working”:**
+   - `maybe[T]` + `?:` → *expected absence* (`nil`).
+   - `try[T]` + `rescue` / `fail?` → *failure with reason* (`Fail` with tag) **[S]**.
+5. **Naming conventions**
+   - `?` at the end → predicate returning `bool` (`even?`, `has?`, `empty?`) **[S]**.
+   - `copy_with` → copy with a change **[S]**.
+   - `maybe_x` → safe version of `x`, returning `nil` instead of `Fail` (`maybe_get`, `maybe_slot`) **[S]**.
+   - Conversion: `::Type` (`"42"::int`) performs a raw cast and may fail directly; `parse:`/`maybe_parse:` are the safe forms; `to_x` is reserved for conversions that never fail **[P]**.
    - Índices começam em `0`; `-1` é o último elemento **[S]**.
    - Ranges: `a to b` exclusivo, `a..b` inclusivo **[S]**.
 6. **Tags como vocabulário.** Chaves de objeto, motivos de `Fail` e seletores dinâmicos são tags (`#ok`) **[S]**.

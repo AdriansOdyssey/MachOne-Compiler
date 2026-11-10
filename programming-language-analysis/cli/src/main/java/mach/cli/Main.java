@@ -27,7 +27,7 @@ public final class Main {
                 Class<?> cls=new ClassLoader(Main.class.getClassLoader()) {Class<?> loadProgram(){return defineClass("MachProgram",bytes,0,bytes.length);}}.loadProgram();
                 cls.getMethod("main",String[].class).invoke(null,(Object)new String[0]);return 0;
             }
-            String file=source.getFileName().toString().replaceFirst("\\.mach$","");Path output=source.toAbsolutePath().getParent().resolve(file+".jar");
+            String file=source.getFileName().toString().replaceFirst("\\.(mach|ma)$","");Path output=source.toAbsolutePath().getParent().resolve(file+".jar");
             writeJar(output,bytes);System.out.println(output);return 0;
         } catch(Diagnostic e) {System.err.println(e.getMessage());return 1;}
         catch(InvocationTargetException e) {Throwable cause=e.getCause();System.err.println("Erro: "+cause.getMessage());return 1;}

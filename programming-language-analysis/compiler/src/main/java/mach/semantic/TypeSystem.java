@@ -68,16 +68,18 @@ public final class TypeSystem {
 
     public boolean assignable(Type actual, Type expected) {
         actual = resolve(actual); expected = resolve(expected);
-        if(expected.name().equals("Any")||expected.name().equals("any"))return true;
-        if(expected.flavor()==Ast.TypeFlavor.BOUND_VARIABLE) {
-            if(expected.bound()!=null&&!assignable(actual,expected.bound()))return false;
+        if (expected.name().equals("Any") || expected.name().equals("any") || actual.equals(NEVER)) return true;
+        if (expected.flavor() == Ast.TypeFlavor.BOUND_VARIABLE) {
+            if (expected.bound() != null && !assignable(actual, expected.bound())) return false;
             return true;
         }
-        if(expected.flavor()==Ast.TypeFlavor.ABSTRACT_CONSTRAINT) {
-            if(expected.name().equals("Any")||expected.name().equals("any"))return true;
-            return atomicAssignable(actual,new Type(expected.name(),expected.args()),new HashSet<>());
+        if (expected.flavor() == Ast.TypeFlavor.ABSTRACT_CONSTRAINT) {
+            if (expected.name().equals("Any") || expected.name().equals("any")) return true;
+            return atomicAssignable(actual, new Type(expected.name(), expected.args()), new HashSet<>());
         }
-        if (actual.equals(NEVER) || expected.equals(ANY) || actual.equals(expected)) return true;
+        if (actual.flavor() == Ast.TypeFlavor.BOUND_VARIABLE && actual.bound() != null) return assignable(actual.bound(), expected);
+        if (actual.equals(expected)) return true;
+        if (isSubtype(actual, expected, new LinkedHashSet<>())) return true;
         List<Type> choices = alternatives(expected);
         for (Type member : alternatives(actual)) {
             boolean accepted = false;
@@ -85,6 +87,72 @@ public final class TypeSystem {
             if (!accepted) return false;
         }
         return true;
+    }
+
+    public boolean isSubtype(Type actual, Type expected) {
+        return isSubtype(actual, expected, new LinkedHashSet<>());
+    }
+
+    private boolean isSubtype(Type actual, Type expected, Set<String> seen) {
+        final Type actualValue = resolve(actual);
+        final Type expectedValue = resolve(expected);
+        if (actualValue.equals(NEVER) || expectedValue.equals(ANY) || actualValue.equals(expectedValue)) return true;
+        if (expectedValue.flavor() == Ast.TypeFlavor.BOUND_VARIABLE) {
+            if (expectedValue.bound() == null) return true;
+            return isSubtype(actualValue, expectedValue.bound(), new LinkedHashSet<>(seen));
+        }
+        if (expectedValue.flavor() == Ast.TypeFlavor.ABSTRACT_CONSTRAINT) {
+            if (expectedValue.name().equals("Any") || expectedValue.name().equals("any")) return true;
+            return isSubtype(actualValue, new Type(expectedValue.name(), expectedValue.args()), new LinkedHashSet<>(seen));
+        }
+        if (actualValue.flavor() == Ast.TypeFlavor.BOUND_VARIABLE) {
+            if (actualValue.bound() == null) return true;
+            return isSubtype(actualValue.bound(), expectedValue, new LinkedHashSet<>(seen));
+        }
+        if (expectedValue.name().equals("union")) {
+            final Type actualRef = actualValue;
+            return expectedValue.args().stream().anyMatch(arg -> isSubtype(actualRef, arg, new LinkedHashSet<>(seen)));
+        }
+        if (actualValue.name().equals("union")) {
+            final Type expectedRef = expectedValue;
+            return actualValue.args().stream().allMatch(arg -> isSubtype(arg, expectedRef, new LinkedHashSet<>(seen)));
+        }
+        if (actualValue.name().equals("maybe") || actualValue.name().equals("try")) {
+            if (actualValue.args().size() != 1) return false;
+            if (expectedValue.name().equals(actualValue.name())) {
+                return isSubtype(actualValue.args().getFirst(), expectedValue.args().getFirst(), new LinkedHashSet<>(seen));
+            }
+            return false;
+        }
+        if (expectedValue.name().equals("maybe") || expectedValue.name().equals("try")) {
+            if (expectedValue.args().size() != 1) return false;
+            return false;
+        }
+        if (actualValue.name().equals(expectedValue.name())) {
+            if (actualValue.args().size() != expectedValue.args().size()) return false;
+            for (int i = 0; i < actualValue.args().size(); i++) {
+                if (!isSubtype(actualValue.args().get(i), expectedValue.args().get(i), new LinkedHashSet<>(seen))) return false;
+            }
+            return true;
+        }
+        String parent = CORE_PARENT.get(actualValue.name());
+        if (parent != null && !seen.contains(actualValue.name())) {
+            seen.add(actualValue.name());
+            if (isSubtype(new Type(parent), expectedValue, new LinkedHashSet<>(seen))) return true;
+        }
+        String expectedParent = CORE_PARENT.get(expectedValue.name());
+        if (expectedParent != null && !seen.contains(expectedValue.name())) {
+            seen.add(expectedValue.name());
+            if (isSubtype(actualValue, new Type(expectedParent), new LinkedHashSet<>(seen))) return true;
+        }
+        if (records.containsKey(actualValue.name())) {
+            Ast.Record record = records.get(actualValue.name());
+            if (record.parent() != null && !seen.contains(record.name())) {
+                seen.add(record.name());
+                if (isSubtype(resolve(record.parent()), expectedValue, new LinkedHashSet<>(seen))) return true;
+            }
+        }
+        return false;
     }
     private boolean atomicAssignable(Type actual, Type expected, Set<String> visited) {
         if(actual.flavor()==Ast.TypeFlavor.BOUND_VARIABLE&&actual.bound()!=null)return atomicAssignable(actual.bound(),expected,new HashSet<>(visited));

@@ -1,2 +1,6 @@
-let n = "42"::int
-show n + 10
+on print_name: (name = "Unknown")
+  show "Name: $name"
+end
+
+print_name: "Alice"
+print_name

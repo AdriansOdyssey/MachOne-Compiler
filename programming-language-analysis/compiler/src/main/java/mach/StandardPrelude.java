@@ -108,7 +108,10 @@ final class StandardPrelude {
     }
     private static void addModuleCandidates(List<Path> candidates,Path base,Path relative){
         candidates.add(base.resolve(relative.toString()+".mach"));
+        candidates.add(base.resolve(relative.toString()+".ma"));
         candidates.add(base.resolve(relative.toString()).resolve("main.mach"));
+        candidates.add(base.resolve(relative.toString()).resolve("main.ma"));
         candidates.add(base.resolve(relative.toString()).resolve("index.mach"));
+        candidates.add(base.resolve(relative.toString()).resolve("index.ma"));
     }
 }
